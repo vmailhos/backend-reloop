@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno
+.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de editor / IDE
+.vscode/
+.idea/
+
+# Build o compilaciones (si algún día usás TypeScript o Babel)
+dist/
+build/
+
+# Archivos temporales
+*.tmp
+*.temp
+
+# Archivos de prueba o cobertura
+coverage/
