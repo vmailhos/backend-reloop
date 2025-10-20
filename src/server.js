@@ -1,7 +1,8 @@
+// src/server.js
+require("dotenv").config();
 const app = require("./app");
 
-const PORT = 3000;
-
-app.get("/", (req, res) => {
-  res.send("Backend de Reloop corriendo...");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Reloop API escuchando en http://localhost:${PORT}`);
 });

@@ -28,3 +28,8 @@ build/
 
 # Archivos de prueba o cobertura
 coverage/
+
+/src/generated/prisma
+
+# Postgres local (Docker)
+.docker/

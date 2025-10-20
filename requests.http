@@ -1,0 +1,87 @@
+@base = http://localhost:3000
+
+### Health
+GET {{base}}/health
+
+### Debug del body (opcional para probar JSON)
+POST {{base}}/_debug/body
+Content-Type: application/json
+
+{ "email": "sofi@example.com", "password": "123456" }
+
+### Signup (solo si necesitás un user nuevo)
+POST {{base}}/auth/signup
+Content-Type: application/json
+
+{ "email": "sofidelfino@example.com", "password": "123456" }
+
+### Login (guarda la respuesta como variable "login")
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{"email":"sofidelfino@example.com","password":"123456"}
+
+### Mis publicaciones (usa el token del login)
+GET {{base}}/listings/mine
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Listar (paginado + sort)
+GET {{base}}/listings?page=1&pageSize=10&sort=newest
+
+### Crear listing (guarda la respuesta como "createListing")
+# @name createListing
+POST {{base}}/listings
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.$.token}}
+
+{
+  "title":"Remera azul",
+  "price":900,
+  "category":"remeras",
+  "condition":"usado",
+  "photos":[{"url":"uploads/foto1.png"}]
+}
+
+### Detalle de un listing (usa el id de la respuesta anterior)
+GET {{base}}/listings/{{createListing.response.body.$.id}}
+
+### Editar listing propio (PATCH)
+PATCH {{base}}/listings/{{createListing.response.body.$.id}}
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.$.token}}
+
+{
+  "title": "Remera azul (editada)",
+  "price": 950
+}
+
+### Borrar listing propio
+DELETE {{base}}/listings/{{createListing.response.body.$.id}}
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Favoritos - estado (true/false)
+GET {{base}}/favorites/{{createListing.response.body.$.id}}
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Favoritos - agregar (usando un ID del seed)
+POST {{base}}/favorites/seed-2
+Authorization: Bearer {{login.response.body.$.token}}
+
+
+### Favoritos - listar
+GET {{base}}/favorites?page=1&pageSize=10
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Favoritos - quitar
+DELETE {{base}}/favorites/{{createListing.response.body.$.id}}
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Upload base64 (dev)
+POST {{base}}/uploads/local
+Content-Type: application/json
+
+{
+  "filename": "pixel.png",
+  "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5YII="
+}

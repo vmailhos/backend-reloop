@@ -1,20 +1,34 @@
 {
   "name": "backend-reloop",
   "version": "1.0.0",
-  "description": "��#\u0000 \u0000b\u0000a\u0000c\u0000k\u0000e\u0000n\u0000d\u0000-\u0000r\u0000e\u0000l\u0000o\u0000o\u0000p\u0000\r\u0000 \u0000",
-  "main": "index.js",
+  "description": "Backend de Reloop (API Node/Express)",
+  "main": "src/server.js",
   "scripts": {
-  "dev": "nodemon ./src/server.js",
-  "start": "node ./src/server.js"
-}
-,
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "seed": "node prisma/seed.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.1.0"
+    "@aws-sdk/client-s3": "^3.663.0",
+    "@aws-sdk/s3-request-presigner": "^3.663.0",
+    "@prisma/client": "^6.17.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "swagger-ui-express": "^5.0.1",
+    "yamljs": "^0.3.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "prisma": "^6.17.1"
   }
 }

@@ -1,0 +1,51 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  listings  Listing[]
+  favorites Favorite[]
+}
+
+model Listing {
+  id        String    @id @default(cuid())
+  title     String
+  price     Decimal   @db.Decimal(10,2)
+  condition String
+  category  String
+  sellerId  String
+  seller    User      @relation(fields: [sellerId], references: [id])
+  photos    Photo[]
+  favorites Favorite[]
+  createdAt DateTime  @default(now())
+
+  @@index([title])
+  @@index([category])
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  url       String
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  user      User     @relation(fields: [userId], references: [id])
+  listing   Listing  @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
+}
