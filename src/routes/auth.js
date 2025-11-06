@@ -24,6 +24,8 @@ const signupSchema = {
     password: z
       .string()
       .min(6, "La contraseña debe tener al menos 6 caracteres"),
+    name: z.string().trim().optional(),
+    country: z.string().trim().optional(),
   }),
 };
 
@@ -39,30 +41,58 @@ const loginSchema = {
 // ✅ POST /auth/signup
 router.post("/signup", validate(signupSchema), async (req, res, next) => {
   try {
-    const { email, username, password } = req.body;
+    const { email, username, password, name, country } = req.body;
 
-    // Verificar duplicados
-    const existingEmail = await prisma.user.findUnique({ where: { email } });
-    if (existingEmail) return res.status(409).json({ error: "email_taken" });
+    // 🔹 Verificar duplicados
+    const existingEmail = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() }, // email en minúsculas
+    });
+    if (existingEmail)
+      return res.status(409).json({ error: "email_taken" });
 
-    const existingUsername = await prisma.user.findUnique({ where: { username } });
-    if (existingUsername) return res.status(409).json({ error: "username_taken" });
+    const existingUsername = await prisma.user.findUnique({
+      where: { username: username.trim() }, // username exacto, no toLowerCase
+    });
+    if (existingUsername)
+      return res.status(409).json({ error: "username_taken" });
 
+    // 🔹 Encriptar contraseña
     const hash = await bcrypt.hash(password, 10);
 
-    // 🔤 Generar avatar
+    // 🔹 Generar avatar
     const initial = username.charAt(0).toUpperCase();
-    const avatar = `https://ui-avatars.com/api/?name=${initial}&background=random&color=fff&size=128`;
+    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(initial)}&background=random&color=fff&size=128`;
 
-    // Crear el usuario
+    // 🔹 Crear usuario (username tal cual lo escribió)
     const user = await prisma.user.create({
-      data: { email, username, password: hash, avatar },
-      select: { id: true, email: true, username: true, avatar: true },
+      data: {
+        email: email.trim().toLowerCase(),
+        username: username.trim(), // 👈 se guarda tal cual
+        password: hash,
+        avatar,
+        name,
+        country,
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        avatar: true,
+        name: true,
+        country: true,
+      },
     });
 
-    // Crear token con avatar incluido
+    // 🔹 Crear token con los datos del usuario
     const token = jwt.sign(
-      { sub: user.id, email: user.email, username: user.username, avatar: user.avatar },
+      {
+        sub: user.id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar,
+        name: user.name,
+        country: user.country,
+      },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
@@ -78,12 +108,24 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
 router.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
     const { identifier, password } = req.body;
+    const trimmed = identifier.trim(); // 👈 solo recorta espacios, sin cambiar el caso
 
     const user = await prisma.user.findFirst({
       where: {
-        OR: [{ email: identifier.toLowerCase() }, { username: identifier }],
+        OR: [
+          { email: trimmed.toLowerCase() }, // email sí conviene en minúsculas
+          { username: trimmed }              // 👈 busca exactamente igual como fue guardado
+        ]
       },
-      select: { id: true, email: true, username: true, password: true, avatar: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        password: true,
+        avatar: true,
+        name: true,
+        country: true
+      },
     });
 
     if (!user) return res.status(401).json({ error: "invalid_credentials" });
@@ -92,7 +134,14 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
     if (!valid) return res.status(401).json({ error: "invalid_credentials" });
 
     const token = jwt.sign(
-      { sub: user.id, email: user.email, username: user.username, avatar: user.avatar },
+      {
+        sub: user.id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar,
+        name: user.name,
+        country: user.country,
+      },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
@@ -104,6 +153,7 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
     next(e);
   }
 });
+
 
 // ✅ POST /auth/google
 router.post("/google", async (req, res, next) => {
@@ -130,9 +180,17 @@ router.post("/google", async (req, res, next) => {
     let user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      const baseUsername =
-        payload.name?.replace(/\s+/g, "").toLowerCase() || "user";
-      const username = baseUsername + Math.floor(Math.random() * 10000);
+      let usernameBase = (payload.name || email.split("@")[0])
+        .replace(/\W+/g, "")
+        .toLowerCase();
+      let username = usernameBase;
+      let count = 1;
+
+      // Evitar duplicados
+      while (await prisma.user.findUnique({ where: { username } })) {
+        username = `${usernameBase}${count++}`;
+      }
+
       const password = await bcrypt.hash(Math.random().toString(36).slice(-8), 10);
 
       user = await prisma.user.create({
@@ -143,12 +201,19 @@ router.post("/google", async (req, res, next) => {
           avatar: payload.picture || null,
           password,
         },
-        select: { id: true, email: true, username: true, avatar: true },
+        select: { id: true, email: true, username: true, avatar: true, name: true, country: true },
       });
     }
 
     const jwtToken = jwt.sign(
-      { sub: user.id, email: user.email, username: user.username, avatar: user.avatar },
+      {
+        sub: user.id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar,
+        name: user.name,
+        country: user.country,
+      },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
