@@ -1,4 +1,5 @@
 // prisma/schema.prisma
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -8,37 +9,61 @@ generator client {
   provider = "prisma-client-js"
 }
 
+//
+// USERS
+//
 model User {
-  id         String     @id @default(cuid())
-  email      String     @unique
-  username   String     @unique
-  password   String
-  name       String?
-  avatar     String?
-  country    String? // agregado para mostrar país del usuario
-  createdAt  DateTime   @default(now())
-  listings   Listing[]
-  favorites  Favorite[]
+  id        String    @id @default(cuid())
+  email     String    @unique
+  username  String    @unique
+  password  String
+  name      String?
+  lastName  String?
+  phone     String?
+  gender    String?
+  birthDate DateTime?
+  avatar    String?
+  country   String?
+  createdAt DateTime  @default(now())
+
+  listings        Listing[]
+  favorites       Favorite[]
+  ratingsGiven    Rating[]   @relation("ratings_given")
+  ratingsReceived Rating[]   @relation("ratings_received")
 }
 
+//
+// LISTINGS
+//
 model Listing {
-  id              String      @id @default(cuid())
-  title           String
-  description     String?
-  price           Decimal     @db.Decimal(10,2)
-  condition       Condition
-  category        Category
-  subCategory     SubCategory?
-  subSubCategory  String?     // libre, ya que depende de la subcategoría
-  brand           String?
-  size            String?
-  color           String?
-  status          String       @default("available")
-  sellerId        String
-  seller          User         @relation(fields: [sellerId], references: [id])
-  photos          Photo[]
-  favorites       Favorite[]
-  createdAt       DateTime     @default(now())
+  id             String          @id @default(cuid())
+  title          String
+  description    String?
+  price          Decimal         @db.Decimal(10, 2)
+  condition      Condition
+  category       Category
+  subCategory    SubCategory?
+  subSubCategory SubSubCategory?
+
+  brand String?
+  color String?
+
+  sizeTop       TopSize?
+  sizeBottom    BottomSize?
+  sizeShoe      ShoeSize?
+  sizeAccessory AccessorySize?
+  sizeKids      KidsSize?
+  sizeKidsShoe  KidsShoeSize?
+
+  status String @default("available")
+
+  sellerId String
+  seller   User   @relation(fields: [sellerId], references: [id])
+
+  photos    Photo[]
+  favorites Favorite[]
+  ratings   Rating[]
+  createdAt DateTime   @default(now())
 
   @@index([title])
   @@index([category])
@@ -49,22 +74,51 @@ model Listing {
   @@index([createdAt])
 }
 
+//
+// PHOTOS
+//
 model Photo {
-  id         String   @id @default(cuid())
-  url        String
-  listingId  String
-  listing    Listing  @relation(fields: [listingId], references: [id])
+  id        String  @id @default(cuid())
+  url       String
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
 }
 
+//
+// FAVORITES
+//
 model Favorite {
-  id         String   @id @default(cuid())
-  userId     String
-  listingId  String
-  user       User     @relation(fields: [userId], references: [id])
-  listing    Listing  @relation(fields: [listingId], references: [id])
+  id        String  @id @default(cuid())
+  userId    String
+  listingId String
+  user      User    @relation(fields: [userId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
 
   @@unique([userId, listingId])
 }
+
+//
+// RATINGS
+//
+model Rating {
+  id        String   @id @default(cuid())
+  value     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  authorId String
+  author   User   @relation("ratings_given", fields: [authorId], references: [id])
+
+  targetId String
+  target   User   @relation("ratings_received", fields: [targetId], references: [id])
+
+  listingId String?
+  listing   Listing? @relation(fields: [listingId], references: [id])
+}
+
+//
+// ENUMS DEL SISTEMA
+//
 
 enum Condition {
   NUEVO_CON_ETIQUETA
@@ -84,4 +138,136 @@ enum SubCategory {
   ROPA
   ACCESORIOS
   CALZADOS
+}
+
+enum SubSubCategory {
+  Todos
+  Remeras
+  Camisas
+  Tops
+  Pantalones
+  Bermudas
+  Shorts
+  Camperas
+  Vestidos
+  Buzos
+  Faldas
+  Blazers
+  Carteras
+  Sombreros
+  Lentes
+  Bijou
+  Cinturones
+  Guantes
+  Bufandas
+  Joyas
+  Sandalias
+  Botas
+  Zapatillas
+  Tacos
+}
+
+// TALLE SUPERIOR (remeras, buzos, camperas, camisas, tops, blazers, vestidos)
+enum TopSize {
+  TS_XXS
+  TS_XS
+  TS_S
+  TS_M
+  TS_L
+  TS_XL
+  TS_XXL
+  TS_XXXL
+  TS_U
+}
+
+// TALLE INFERIOR (pantalones, jeans, shorts, faldas)
+enum BottomSize {
+  TB_XXS
+  TB_XS
+  TB_S
+  TB_M
+  TB_L
+  TB_XL
+  TB_XXL
+  TB_U
+  TB_30
+  TB_32
+  TB_34
+  TB_36
+  TB_38
+  TB_40
+  TB_42
+  TB_44
+  TB_46
+  TB_48
+}
+
+// CALZADO ADULTO
+enum ShoeSize {
+  SH_33
+  SH_34
+  SH_35
+  SH_36
+  SH_37
+  SH_38
+  SH_39
+  SH_40
+  SH_41
+  SH_42
+  SH_43
+  SH_44
+  SH_45
+  SH_46
+}
+
+// ROPA NIÑOS
+enum KidsSize {
+  K_0_3M
+  K_3_6M
+  K_6_9M
+  K_9_12M
+  K_12_18M
+  K_18_24M
+  K_2
+  K_3
+  K_4
+  K_5
+  K_6
+  K_7
+  K_8
+  K_10
+  K_12
+  K_14
+  K_16
+}
+
+// CALZADO NIÑOS
+enum KidsShoeSize {
+  KS_16
+  KS_17
+  KS_18
+  KS_19
+  KS_20
+  KS_21
+  KS_22
+  KS_23
+  KS_24
+  KS_25
+  KS_26
+  KS_27
+  KS_28
+  KS_29
+  KS_30
+  KS_31
+  KS_32
+  KS_33
+}
+
+// ACCESORIOS
+enum AccessorySize {
+  A_U
+  A_S
+  A_M
+  A_L
+  A_XL
 }

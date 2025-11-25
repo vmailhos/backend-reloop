@@ -32,6 +32,7 @@ app.use("/auth", require("./routes/auth"));
 app.use("/listings", require("./routes/listings"));
 app.use("/uploads", require("./routes/uploads"));
 app.use("/favorites", require("./routes/favorites"));
+app.use("/users", require("./routes/users"));
 
 // Debug opcional
 app.post("/_debug/body", (req, res) => {

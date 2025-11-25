@@ -4,7 +4,7 @@
   "description": "Backend de Reloop (API Node/Express)",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "npx prisma generate && nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node prisma/seed.js"
   },

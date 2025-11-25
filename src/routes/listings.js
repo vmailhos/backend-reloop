@@ -4,6 +4,40 @@ const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
 
+//
+// ENUMS DE TALLE (CORRECTOS)
+//
+
+const TopSizeEnum = z.enum([
+  "TS_XXS","TS_XS","TS_S","TS_M","TS_L","TS_XL","TS_XXL","TS_XXXL","TS_U"
+]);
+
+const BottomSizeEnum = z.enum([
+  "TB_XXS","TB_XS","TB_S","TB_M","TB_L","TB_XL","TB_XXL","TB_U",
+  "TB_30","TB_32","TB_34","TB_36","TB_38","TB_40","TB_42","TB_44","TB_46","TB_48"
+]);
+
+const ShoeSizeEnum = z.enum([
+  "SH_33","SH_34","SH_35","SH_36","SH_37","SH_38","SH_39",
+  "SH_40","SH_41","SH_42","SH_43","SH_44","SH_45","SH_46"
+]);
+
+const AccessorySizeEnum = z.enum([
+  "A_U","A_S","A_M","A_L","A_XL"
+]);
+
+const KidsSizeEnum = z.enum([
+  "K_0_3M","K_3_6M","K_6_9M","K_9_12M","K_12_18M","K_18_24M",
+  "K_2","K_3","K_4","K_5","K_6","K_7","K_8","K_10","K_12","K_14","K_16"
+]);
+
+const KidsShoeSizeEnum = z.enum([
+  "KS_16","KS_17","KS_18","KS_19","KS_20","KS_21","KS_22","KS_23",
+  "KS_24","KS_25","KS_26","KS_27","KS_28","KS_29","KS_30","KS_31",
+  "KS_32","KS_33"
+]);
+
+
 // ---------- Helpers ----------
 const toNumberPrice = (l) =>
   l && typeof l.price === "string" ? { ...l, price: Number(l.price) } : l;
@@ -13,9 +47,7 @@ const createListingSchema = {
   body: z.object({
     title: z.string().min(2, "Título muy corto"),
     description: z.string().optional(),
-    price: z
-      .union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)])
-      .transform(Number),
+    price: z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)]).transform(Number),
     condition: z.enum([
       "NUEVO_CON_ETIQUETA",
       "NUEVO_SIN_ETIQUETA",
@@ -23,12 +55,20 @@ const createListingSchema = {
       "BUENO",
       "SATISFACTORIO",
     ]),
-    category: z.enum(["HOMBRE", "MUJER", "NINOS", "ACCESORIOS", "CALZADOS", "ROPA"]),
+    category: z.enum(["HOMBRE", "MUJER", "NINOS"]),
     subCategory: z.enum(["ROPA", "ACCESORIOS", "CALZADOS"]).optional(),
     subSubCategory: z.string().optional(),
+
     brand: z.string().optional(),
-    size: z.string().optional(),
     color: z.string().optional(),
+
+    sizeTop: TopSizeEnum.optional(),
+    sizeBottom: BottomSizeEnum.optional(),
+    sizeShoe: ShoeSizeEnum.optional(),
+    sizeAccessory: AccessorySizeEnum.optional(),
+    sizeKids: KidsSizeEnum.optional(),
+    sizeKidsShoe: KidsShoeSizeEnum.optional(),
+
     photos: z.array(z.object({ url: z.string().min(1) })).default([]),
   }),
 };
@@ -38,18 +78,23 @@ const listQuerySchema = {
     search: z.string().optional(),
     category: z.string().optional(),
     subCategory: z.string().optional(),
+    subSubCategory: z.string().optional(),
     condition: z.string().optional(),
     brand: z.string().optional(),
     color: z.string().optional(),
-    size: z.string().optional(),
+
+    sizeTop: z.string().optional(),
+    sizeBottom: z.string().optional(),
+    sizeShoe: z.string().optional(),
+    sizeAccessory: z.string().optional(),
+    sizeKids: z.string().optional(),
+    sizeKidsShoe: z.string().optional(),
+
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(20),
-    sort: z
-      .enum(["newest", "price_asc", "price_desc"])
-      .default("newest")
-      .optional(),
+    sort: z.enum(["newest", "price_asc", "price_desc"]).default("newest").optional(),
   }),
 };
 
@@ -58,38 +103,50 @@ const updateListingSchema = {
     title: z.string().min(2).optional(),
     description: z.string().optional(),
     price: z.coerce.number().nonnegative().optional(),
-    condition: z
-      .enum([
-        "NUEVO_CON_ETIQUETA",
-        "NUEVO_SIN_ETIQUETA",
-        "MUY_BUENO",
-        "BUENO",
-        "SATISFACTORIO",
-      ])
-      .optional(),
-    category: z.enum(["HOMBRE", "MUJER", "NINOS", "ACCESORIOS", "CALZADOS", "ROPA"]).optional(),
+    condition: z.enum([
+      "NUEVO_CON_ETIQUETA",
+      "NUEVO_SIN_ETIQUETA",
+      "MUY_BUENO",
+      "BUENO",
+      "SATISFACTORIO",
+    ]).optional(),
+    category: z.enum(["HOMBRE", "MUJER", "NINOS"]).optional(),
     subCategory: z.enum(["ROPA", "ACCESORIOS", "CALZADOS"]).optional(),
     subSubCategory: z.string().optional(),
+
     brand: z.string().optional(),
-    size: z.string().optional(),
     color: z.string().optional(),
+
+    sizeTop: TopSizeEnum.optional(),
+    sizeBottom: BottomSizeEnum.optional(),
+    sizeShoe: ShoeSizeEnum.optional(),
+    sizeAccessory: AccessorySizeEnum.optional(),
+    sizeKids: KidsSizeEnum.optional(),
+    sizeKidsShoe: KidsShoeSizeEnum.optional(),
+
     photos: z.array(z.object({ url: z.string().min(1) })).optional(),
   }),
 };
 
 // ---------- Rutas ----------
 
-// GET /listings (listado con filtros + paginación + sort)
+// GET /listings/all
 router.get("/all", validate(listQuerySchema), async (req, res, next) => {
   try {
     const {
       search,
       category,
       subCategory,
+      subSubCategory,
       condition,
       brand,
       color,
-      size,
+      sizeTop,
+      sizeBottom,
+      sizeShoe,
+      sizeAccessory,
+      sizeKids,
+      sizeKidsShoe,
       minPrice,
       maxPrice,
       page,
@@ -111,11 +168,26 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
 
     const where = {
       ...(category && { category }),
-      ...(subCategory && { subCategory }),
-      ...(condition && { condition }),
+
+      ...(subCategory && subCategory !== "Todos" && { subCategory }),
+      ...(subSubCategory && subSubCategory !== "Todos" && { subSubCategory }),
+
       ...(brand && { brand }),
-      ...(color && { color }),
-      ...(size && { size }),
+      ...(condition && {
+        condition: { in: condition.split(",") }
+      }),
+      ...(color && {
+        color: { in: color.split(",") }
+      }),
+
+
+      ...(sizeTop && { sizeTop: { in: sizeTop.split(",") } }),
+      ...(sizeBottom && { sizeBottom: { in: sizeBottom.split(",") } }),
+      ...(sizeShoe && { sizeShoe: { in: sizeShoe.split(",") } }),
+      ...(sizeAccessory && { sizeAccessory: { in: sizeAccessory.split(",") } }),
+      ...(sizeKids && { sizeKids: { in: sizeKids.split(",") } }),
+      ...(sizeKidsShoe && { sizeKidsShoe: { in: sizeKidsShoe.split(",") } }),
+
       ...(search && {
         OR: [
           { title: { contains: search, mode: "insensitive" } },
@@ -123,6 +195,7 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
           { brand: { contains: search, mode: "insensitive" } },
         ],
       }),
+
       ...(minPrice != null || maxPrice != null
         ? {
             price: {
@@ -132,6 +205,7 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
           }
         : {}),
     };
+
 
     let orderBy = { createdAt: "desc" };
     if (sort === "price_asc") orderBy = { price: "asc" };
@@ -165,7 +239,7 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
   }
 });
 
-// GET /listings/mine (mis publicaciones)
+// GET /listings/mine
 router.get("/mine", requireAuth, async (req, res, next) => {
   try {
     const items = await prisma.listing.findMany({
@@ -179,37 +253,14 @@ router.get("/mine", requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /listings (crear)
+// POST /listings/create
 router.post("/create", requireAuth, validate(createListingSchema), async (req, res, next) => {
   try {
-    const {
-      title,
-      description,
-      price,
-      condition,
-      category,
-      subCategory,
-      subSubCategory,
-      brand,
-      size,
-      color,
-      photos,
-    } = req.body;
-
     const created = await prisma.listing.create({
       data: {
-        title,
-        description,
-        price,
-        condition,
-        category,
-        subCategory,
-        subSubCategory,
-        brand,
-        size,
-        color,
+        ...req.body,
         sellerId: req.user.id,
-        photos: { create: photos.map((p) => ({ url: p.url })) },
+        photos: { create: req.body.photos.map((p) => ({ url: p.url })) },
       },
       include: { photos: true },
     });
@@ -220,7 +271,7 @@ router.post("/create", requireAuth, validate(createListingSchema), async (req, r
   }
 });
 
-// PATCH /listings/:id (editar propio)
+// PATCH /listings/update/:id
 router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -228,6 +279,7 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
     const owned = await prisma.listing.findFirst({
       where: { id, sellerId: req.user.id },
     });
+
     if (!owned) return res.status(403).json({ error: "forbidden" });
 
     const { photos, ...data } = req.body;
@@ -254,7 +306,7 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
   }
 });
 
-// DELETE /listings/:id (borrar propio)
+// DELETE /listings/delete/:id
 router.delete("/delete/:id", requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -274,7 +326,7 @@ router.delete("/delete/:id", requireAuth, async (req, res, next) => {
   }
 });
 
-// GET /listings/:id (detalle)
+// GET /listings/detail/:id
 router.get("/detail/:id", async (req, res, next) => {
   try {
     const item = await prisma.listing.findUnique({
@@ -302,7 +354,9 @@ router.get("/detail/:id", async (req, res, next) => {
         },
       },
     });
+
     if (!item) return res.status(404).json({ error: "not_found" });
+
     res.json(toNumberPrice(item));
   } catch (e) {
     next(e);

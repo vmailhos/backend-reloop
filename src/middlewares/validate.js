@@ -9,8 +9,10 @@ module.exports = (schema = {}) => (req, res, next) => {
     return next();
   } catch (e) {
     if (e instanceof ZodError) {
+      console.log("ZOD VALIDATION ERROR:", JSON.stringify(e.errors, null, 2));
       return res.status(400).json({ error: "validation_error", details: e.errors });
     }
+
     return next(e);
   }
 };

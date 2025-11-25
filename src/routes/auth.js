@@ -103,7 +103,6 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
     next(e);
   }
 });
-
 // ✅ POST /auth/login
 router.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
@@ -153,8 +152,6 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
     next(e);
   }
 });
-
-
 // ✅ POST /auth/google
 router.post("/google", async (req, res, next) => {
   try {

@@ -25,7 +25,7 @@ module.exports = function requireAuth(req, res, next) {
 
     next();
   } catch (err) {
-    res.status(401).json({ error: "invalid_token" });
+    res.status(401).json({ error: "invalid_token", details: err.errors, });
   }
 };
 
