@@ -362,5 +362,75 @@ router.get("/detail/:id", async (req, res, next) => {
     next(e);
   }
 });
+// GET /listings/recommended 
+router.get("/recommended", async (req, res, next) => {
+  try {
+    const limit = Number(req.query.limit) || 25;
+
+    // 1) Obtener los top 100 por favoritos
+    const top = await prisma.listing.findMany({
+      take: 100,
+      orderBy: {
+        favorites: { _count: "desc" },
+      },
+      include: {
+        photos: true,
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+            country: true,
+          },
+        },
+        _count: { select: { favorites: true } }
+      }
+    });
+
+    // 2) Random shuffle
+    const shuffled = top.sort(() => Math.random() - 0.5);
+
+    // 3) Convertir precio a número y devolver limit
+    res.json(shuffled.slice(0, limit).map(toNumberPrice));
+
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /listings/newest
+router.get("/newest", async (req, res, next) => {
+  try {
+    const limit = Number(req.query.limit) || 25;
+
+    const latest = await prisma.listing.findMany({
+      take: 100,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        photos: true,
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            avatar: true,
+            country: true,
+          },
+        },
+      },
+    });
+
+    // 2) Random shuffle
+    const shuffled = latest.sort(() => Math.random() - 0.5);
+
+    // 3) Convertir precios y devolver limit
+    res.json(shuffled.slice(0, limit).map(toNumberPrice));
+
+  } catch (e) {
+    next(e);
+  }
+});
+
 
 module.exports = router;
