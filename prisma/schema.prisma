@@ -30,6 +30,12 @@ model User {
   favorites       Favorite[]
   ratingsGiven    Rating[]   @relation("ratings_given")
   ratingsReceived Rating[]   @relation("ratings_received")
+  offersSent     Offer[] @relation("buyer_offers")
+  offersReceived Offer[] @relation("seller_offers")
+
+  comments       Comment[]
+  cart           CartItem[]
+  orders         Order[]
 }
 
 //
@@ -64,7 +70,11 @@ model Listing {
   favorites Favorite[]
   ratings   Rating[]
   createdAt DateTime   @default(now())
-
+  comments Comment[]
+  offers   Offer[]
+  orderItems OrderItem[]
+  cartItems CartItem[]  
+  
   @@index([title])
   @@index([category])
   @@index([subCategory])
@@ -115,6 +125,74 @@ model Rating {
   listingId String?
   listing   Listing? @relation(fields: [listingId], references: [id])
 }
+
+model Offer {
+  id          String   @id @default(cuid())
+  amount      Decimal  @db.Decimal(10,2)
+  status      OfferStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id])
+
+  buyerId     String
+  buyer       User     @relation("buyer_offers", fields: [buyerId], references: [id])
+
+  sellerId    String
+  seller      User     @relation("seller_offers", fields: [sellerId], references: [id])
+
+  // Para contraofertas
+  counterOfferAmount Decimal? @db.Decimal(10,2)
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  totalAmount Decimal     @db.Decimal(10,2)
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+
+  buyerId     String
+  buyer       User        @relation(fields: [buyerId], references: [id])
+
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  price      Decimal  @db.Decimal(10,2)
+
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id])
+}
+
 
 //
 // ENUMS DEL SISTEMA
@@ -270,4 +348,18 @@ enum AccessorySize {
   A_M
   A_L
   A_XL
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COUNTERED
+}
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
 }

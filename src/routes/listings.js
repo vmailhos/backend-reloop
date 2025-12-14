@@ -341,7 +341,6 @@ router.get("/detail/:id", async (req, res, next) => {
             country: true,
             avatar: true,
             listings: {
-              take: 3,
               orderBy: { createdAt: "desc" },
               select: {
                 id: true,

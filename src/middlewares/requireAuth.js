@@ -1,6 +1,6 @@
 // src/middlewares/requireAuth.js
 const jwt = require("jsonwebtoken");
-const JWT_SECRET = process.env.JWT_SECRET || "change-me";
+const { JWT_SECRET } = require("../config");
 
 module.exports = function requireAuth(req, res, next) {
   const auth = req.headers.authorization || "";
@@ -25,7 +25,9 @@ module.exports = function requireAuth(req, res, next) {
 
     next();
   } catch (err) {
-    res.status(401).json({ error: "invalid_token", details: err.errors, });
+    return res.status(401).json({
+      error: "invalid_token",
+      details: err.message,
+    }); 
   }
 };
-

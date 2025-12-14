@@ -5,7 +5,8 @@ const { prisma } = require("../db");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
 
-const JWT_SECRET = process.env.JWT_SECRET || "change-me";
+
+const { JWT_SECRET } = require("../config");
 
 // ---------- Schemas ----------
 const emailSchema = z.string().trim().toLowerCase().email("Email inválido");

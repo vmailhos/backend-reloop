@@ -11,7 +11,26 @@ const app = express();
 
 // Middlewares base
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = [
+  "http://localhost:8081",
+  "http://localhost:19006",
+  "http://localhost:3000",
+  "http://reloop-frontend.s3-website.us-east-2.amazonaws.com",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // mobile apps
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("dev"));
 
@@ -34,6 +53,7 @@ app.use("/uploads", require("./routes/uploads"));
 app.use("/favorites", require("./routes/favorites"));
 app.use("/users", require("./routes/users"));
 app.use("/ratings", require("./routes/ratings"));
+app.use("/comments", require("./routes/comments"));
 
 // Debug opcional
 app.post("/_debug/body", (req, res) => {

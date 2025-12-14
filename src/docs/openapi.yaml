@@ -1,21 +1,16 @@
 openapi: 3.0.3
+
 info:
   title: Reloop API
-  version: 0.1.0
+  version: 1.0.0
   description: |
-    API del backend de Reloop (MVP).
-    Autenticación JWT, publicaciones, favoritos y subidas locales (dev).
+    API oficial del backend de Reloop.
+    Incluye autenticación JWT, publicaciones, ofertas, carrito,
+    compras, favoritos, ratings, usuarios y comentarios.
 
 servers:
   - url: http://localhost:3000
-    description: Local
-
-tags:
-  - name: Health
-  - name: Auth
-  - name: Listings
-  - name: Favorites
-  - name: Uploads
+    description: Local development server
 
 components:
   securitySchemes:
@@ -24,80 +19,182 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  #############################
+  # GLOBAL SCHEMAS
+  #############################
+
   schemas:
-    Error:
+
+    ###########################
+    # ERRORS
+    ###########################
+    ErrorResponse:
       type: object
       properties:
-        error: { type: string, example: validation_error }
-        message: { type: string, example: Campo requerido }
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
         details:
           type: array
-          items: { type: object }
-      additionalProperties: true
+          items:
+            type: object
 
-    AuthLogin:
-      type: object
-      required: [email, password]
-      properties:
-        email: { type: string, format: email, example: sofi@example.com }
-        password: { type: string, minLength: 6, example: "123456" }
-
-    AuthToken:
+    DeleteOK:
       type: object
       properties:
-        token: { type: string, example: eyJhbGciOi... }
+        ok:
+          type: boolean
+          example: true
 
-    Photo:
+    ###########################
+    # USERS
+    ###########################
+    User:
       type: object
       properties:
-        id: { type: string, example: clxyz... }
-        url: { type: string, example: uploads/foto1.png }
+        id: { type: string }
+        email: { type: string, example: vale@example.com }
+        username: { type: string }
+        name: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        gender: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        avatar:
+          type: string
+          example: https://example.com/avatar.png
+        createdAt:
+          type: string
+          format: date-time
 
-    UserPublic:
+    UserEditRequest:
       type: object
       properties:
-        id: { type: string, example: clxyz... }
-        email: { type: string, format: email, example: sofi@example.com }
+        name: { type: string }
+        lastName: { type: string }
+        phone: { type: string }
+        gender: { type: string }
+        birthDate:
+          type: string
+          format: date
+        country: { type: string }
+
+    UserAvatarRequest:
+      type: object
+      required: [avatarUrl]
+      properties:
+        avatarUrl:
+          type: string
+          example: https://example.com/avatar.png
+
+    ###########################
+    # AUTH
+    ###########################
+    AuthSignupRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        password:
+          type: string
+          minLength: 6
+        name:
+          type: string
+        country:
+          type: string
+
+    AuthLoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          example: vale@example.com
+        password:
+          type: string
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+    ###########################
+    # LISTINGS
+    ###########################
+    ListingPhoto:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
 
     Listing:
       type: object
       properties:
-        id: { type: string, example: clxyz... }
-        title: { type: string, example: Vestido lila }
-        price: { type: number, example: 1200 }
-        category: { type: string, example: vestidos }
-        condition:
-          type: string
-          enum: [nuevo, como_nuevo, usado]
-          example: como_nuevo
-        seller: { $ref: '#/components/schemas/UserPublic' }
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        price: { type: number }
+        condition: { type: string }
+        category: { type: string }
+        subCategory: { type: string, nullable: true }
+        subSubCategory: { type: string, nullable: true }
+        brand: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        seller:
+          $ref: "#/components/schemas/User"
         photos:
           type: array
-          items: { $ref: '#/components/schemas/Photo' }
-        createdAt: { type: string, format: date-time }
+          items:
+            $ref: "#/components/schemas/ListingPhoto"
+        createdAt:
+          type: string
+          format: date-time
 
-    ListingCreate:
+    ListingCreateRequest:
       type: object
-      required: [title, price]
+      required: [title, price, condition, category]
       properties:
-        title: { type: string, example: Remera azul }
-        price: { type: number, example: 900 }
-        category: { type: string, example: remeras }
-        condition: { type: string, enum: [nuevo, como_nuevo, usado], example: usado }
+        title: { type: string }
+        description: { type: string }
+        price: { type: number }
+        condition: { type: string }
+        category: { type: string }
+        subCategory: { type: string }
+        subSubCategory: { type: string }
+        brand: { type: string }
+        color: { type: string }
         photos:
           type: array
           items:
             type: object
             properties:
-              url: { type: string, example: uploads/foto1.png }
+              url: { type: string }
 
-    ListingUpdate:
+    ListingUpdateRequest:
       type: object
       properties:
         title: { type: string }
+        description: { type: string }
         price: { type: number }
+        condition: { type: string }
         category: { type: string }
-        condition: { type: string, enum: [nuevo, como_nuevo, usado] }
+        subCategory: { type: string }
+        subSubCategory: { type: string }
+        brand: { type: string }
+        color: { type: string }
         photos:
           type: array
           items:
@@ -110,113 +207,525 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/Listing' }
-        total: { type: integer, example: 2 }
-        page: { type: integer, example: 1 }
-        pageSize: { type: integer, example: 20 }
+          items:
+            $ref: "#/components/schemas/Listing"
+        total:
+          type: number
+        page:
+          type: number
+        pageSize:
+          type: number
 
-    FavoriteItem:
-      type: object
-      properties:
-        id: { type: string, example: cllist... }
-        title: { type: string, example: Campera denim }
-        price: { type: number, example: 2500 }
-        category: { type: string, example: camperas }
-        condition: { type: string, enum: [nuevo, como_nuevo, usado], example: usado }
-        photo: { type: string, nullable: true, example: uploads/foto2.png }
-        seller: { $ref: '#/components/schemas/UserPublic' }
-        favoriteId: { type: string, example: clfav... }
-
-    FavoritesListResponse:
+    ListingMineResponse:
       type: object
       properties:
         items:
           type: array
-          items: { $ref: '#/components/schemas/FavoriteItem' }
-        total: { type: integer, example: 1 }
-        page: { type: integer, example: 1 }
-        pageSize: { type: integer, example: 20 }
+          items:
+            $ref: "#/components/schemas/Listing"
+        total:
+          type: number
 
-    UploadBase64Req:
-      type: object
-      required: [filename, base64]
-      properties:
-        filename: { type: string, example: foto.png }
-        base64: { type: string, example: iVBORw0KGgoAAA... }
-
-    UploadBase64Res:
+    ListingDetail:
       type: object
       properties:
-        ok: { type: boolean, example: true }
-        path: { type: string, example: uploads/169999999-foto.png }
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        price: { type: number }
+        condition: { type: string }
+        category: { type: string }
+        subCategory: { type: string }
+        subSubCategory: { type: string }
+        brand: { type: string }
+        color: { type: string }
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/ListingPhoto"
+        seller:
+          $ref: "#/components/schemas/User"
+        createdAt:
+          type: string
+          format: date-time
 
+    ###########################
+    # COMMENTS
+    ###########################
+    Comment:
+      type: object
+      properties:
+        id: { type: string }
+        content: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          type: object
+          properties:
+            id: { type: string }
+            username: { type: string }
+            avatar: { type: string }
+
+    CommentCreateRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          example: "¿Qué tal es la calidad?"
+
+    ###########################
+    # FAVORITES
+    ###########################
+    FavoriteItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        price: { type: number }
+        category: { type: string }
+        condition: { type: string }
+        photo: { type: string }
+        seller:
+          $ref: "#/components/schemas/User"
+        favoriteId: { type: string }
+
+    FavoriteListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FavoriteItem"
+        total: { type: number }
+        page: { type: number }
+        pageSize: { type: number }
+
+    FavoriteStatusResponse:
+      type: object
+      properties:
+        isFavorite:
+          type: boolean
+        favoriteId:
+          type: string
+          nullable: true
+
+    FavoriteCreatedResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        favoriteId:
+          type: string
+
+    ###########################
+    # CART
+    ###########################
+    CartItem:
+      type: object
+      properties:
+        id: { type: string }
+        listingId: { type: string }
+        userId: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        listing:
+          $ref: "#/components/schemas/Listing"
+
+    CartListResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/CartItem"
+
+    ###########################
+    # OFFERS
+    ###########################
+    Offer:
+      type: object
+      properties:
+        id: { type: string }
+        amount: { type: number }
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED, COUNTERED]
+        counterOfferAmount:
+          type: number
+          nullable: true
+        listing:
+          $ref: "#/components/schemas/Listing"
+        buyer:
+          $ref: "#/components/schemas/User"
+        seller:
+          $ref: "#/components/schemas/User"
+
+    OfferCreateRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: number }
+
+    OfferRespondRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED, COUNTERED]
+        counterAmount:
+          type: number
+          nullable: true
+
+    ###########################
+    # ORDERS
+    ###########################
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string }
+        price: { type: number }
+        listing:
+          $ref: "#/components/schemas/Listing"
+
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        totalAmount: { type: number }
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+
+    OrderCreateRequest:
+      type: object
+      required: [listingIds]
+      properties:
+        listingIds:
+          type: array
+          items:
+            type: string
+
+    ###########################
+    # RATINGS
+    ###########################
+    Rating:
+      type: object
+      properties:
+        id: { type: string }
+        value: { type: number }
+        comment: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          $ref: "#/components/schemas/User"
+        listing:
+          $ref: "#/components/schemas/Listing"
+
+    RatingCreateRequest:
+      type: object
+      required: [targetId, value]
+      properties:
+        targetId:
+          type: string
+        value:
+          type: number
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        listingId:
+          type: string
+          nullable: true
+
+    ReputationResponse:
+      type: object
+      properties:
+        averageScore:
+          type: number
+        totalRatings:
+          type: number
+
+  ###############################################
+  # AUTH
+  ###############################################
 paths:
-  /health:
-    get:
-      tags: [Health]
-      summary: Health check
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status: { type: string, example: ok }
-
   /auth/signup:
     post:
       tags: [Auth]
-      summary: Crear usuario
+      summary: Registro de usuario
+      description: Crear un nuevo usuario mediante email, username y password.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/AuthLogin' }
+            schema:
+              $ref: "#/components/schemas/AuthSignupRequest"
       responses:
-        '201': { description: Creado }
-        '409':
-          description: Email ya utilizado
+        "201":
+          description: Usuario creado correctamente
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '400':
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Email o username ya registrados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
           description: Error de validación
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /auth/login:
     post:
       tags: [Auth]
-      summary: Login (devuelve JWT)
+      summary: Login con email o username
+      description: Autentica al usuario mediante email/username + password.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/AuthLogin' }
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
       responses:
-        '200':
-          description: OK
+        "200":
+          description: Login exitoso
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/AuthToken' }
-        '401':
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
           description: Credenciales inválidas
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '400':
-          description: Error de validación/JSON
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: Error de validación
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema:
+                $ref: "#/components/schemas/Error"
 
-  /listings:
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Login/Signup con Google OAuth
+      description: Autentica mediante token de Google y crea usuario si no existe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  example: ya29.a0AfH6SM123abc
+      responses:
+        "200":
+          description: Autenticación correcta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Token faltante o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  ###############################################
+  # USERS
+  ###############################################
+
+  /users/get:
+    get:
+      tags: [Users]
+      summary: Obtener perfil del usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Perfil del usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Token inválido o faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/edit:
+    put:
+      tags: [Users]
+      summary: Actualizar perfil del usuario autenticado
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                lastName: { type: string }
+                phone: { type: string }
+                gender: { type: string }
+                birthDate:
+                  type: string
+                  format: date
+                country: { type: string }
+      responses:
+        "200":
+          description: Perfil actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error actualizando perfil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/avatar:
+    post:
+      tags: [Users]
+      summary: Cambiar avatar del usuario autenticado
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [avatarUrl]
+              properties:
+                avatarUrl:
+                  type: string
+                  example: "https://example.com/avatar.png"
+      responses:
+        "200":
+          description: Avatar actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Token inválido o faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error actualizando avatar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  ###############################################
+  # COMMENTS
+  ###############################################
+
+  /comments/{listingId}:
+    get:
+      tags: [Comments]
+      summary: Obtener comentarios públicos de un listing
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de comentarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          description: Listing no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Comments]
+      summary: Crear comentario público en un listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  example: "¿Qué tal es la calidad?"
+      responses:
+        "201":
+          description: Comentario creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+        "400":
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token inválido o faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  ###############################################
+  # LISTINGS
+  ###############################################
+
+  /listings/all:
     get:
       tags: [Listings]
-      summary: Listar publicaciones
+      summary: Listar publicaciones con filtros, paginación y búsqueda
       parameters:
         - in: query
           name: search
@@ -225,17 +734,50 @@ paths:
           name: category
           schema: { type: string }
         - in: query
+          name: subCategory
+          schema: { type: string }
+        - in: query
+          name: subSubCategory
+          schema: { type: string }
+        - in: query
+          name: condition
+          schema: { type: string }
+        - in: query
+          name: brand
+          schema: { type: string }
+        - in: query
+          name: color
+          schema: { type: string }
+        - in: query
+          name: sizeTop
+          schema: { type: string }
+        - in: query
+          name: sizeBottom
+          schema: { type: string }
+        - in: query
+          name: sizeShoe
+          schema: { type: string }
+        - in: query
+          name: sizeAccessory
+          schema: { type: string }
+        - in: query
+          name: sizeKids
+          schema: { type: string }
+        - in: query
+          name: sizeKidsShoe
+          schema: { type: string }
+        - in: query
           name: minPrice
-          schema: { type: number, minimum: 0 }
+          schema: { type: number }
         - in: query
           name: maxPrice
-          schema: { type: number, minimum: 0 }
+          schema: { type: number }
         - in: query
           name: page
-          schema: { type: integer, default: 1, minimum: 1 }
+          schema: { type: integer, default: 1 }
         - in: query
           name: pageSize
-          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+          schema: { type: integer, default: 20 }
         - in: query
           name: sort
           schema:
@@ -243,46 +785,8 @@ paths:
             enum: [newest, price_asc, price_desc]
             default: newest
       responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ListingListResponse' }
-
-    post:
-      tags: [Listings]
-      summary: Crear publicación
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ListingCreate' }
-      responses:
-        '201':
-          description: Creado
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Listing' }
-        '400':
-          description: Error de validación
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /listings/mine:
-    get:
-      tags: [Listings]
-      summary: Mis publicaciones (usuario autenticado)
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200':
-          description: OK
+        "200":
+          description: Lista paginada de publicaciones
           content:
             application/json:
               schema:
@@ -290,209 +794,669 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/Listing' }
-                  total: { type: integer }
-        '401':
-          description: Token inválido/faltante
+                    items:
+                      $ref: "#/components/schemas/Listing"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        "400":
+          description: Error de validación
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema:
+                $ref: "#/components/schemas/Error"
 
-  /listings/{id}:
+  /listings/mine:
     get:
       tags: [Listings]
-      summary: Detalle de publicación
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+      summary: Listar publicaciones creadas por el usuario autenticado
+      security:
+        - bearerAuth: []
       responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Listing' }
-        '404':
-          description: No encontrado
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-    patch:
-      tags: [Listings]
-      summary: Editar publicación propia
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ListingUpdate' }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Listing' }
-        '403':
-          description: Forbidden (no es dueño)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: No encontrado
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-    delete:
-      tags: [Listings]
-      summary: Borrar publicación propia
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: OK }
-        '403':
-          description: Forbidden (no es dueño)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: No encontrado
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /favorites:
-    get:
-      tags: [Favorites]
-      summary: Listar favoritos del usuario
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: query
-          name: page
-          schema: { type: integer, default: 1, minimum: 1 }
-        - in: query
-          name: pageSize
-          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/FavoritesListResponse' }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /favorites/{listingId}:
-    get:
-      tags: [Favorites]
-      summary: Estado de favorito (isFavorite)
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: listingId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: OK
+        "200":
+          description: Publicaciones propias
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  isFavorite: { type: boolean, example: true }
-                  favoriteId: { type: string, nullable: true, example: clfav... }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Listing"
+                  total:
+                    type: integer
+        "401":
+          description: Token inválido
 
+  /listings/create:
     post:
-      tags: [Favorites]
-      summary: Agregar a favoritos (idempotente)
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: listingId
-          required: true
-          schema: { type: string }
-      responses:
-        '201': { description: Creado/Existente }
-        '404':
-          description: listing_not_found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '400':
-          description: cannot_favorite_own_listing
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-    delete:
-      tags: [Favorites]
-      summary: Quitar de favoritos
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - in: path
-          name: listingId
-          required: true
-          schema: { type: string }
-      responses:
-        '200': { description: OK }
-        '401':
-          description: Token inválido/faltante
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-
-  /uploads/local:
-    post:
-      tags: [Uploads]
-      summary: Subida de archivo en base64 (dev/local)
+      tags: [Listings]
+      summary: Crear una publicación
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/UploadBase64Req' }
+            schema:
+              $ref: "#/components/schemas/ListingCreateRequest"
       responses:
-        '201':
-          description: OK
+        "201":
+          description: Publicación creada exitosamente
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/UploadBase64Res' }
-        '400':
-          description: bad_request
+              schema:
+                $ref: "#/components/schemas/Listing"
+        "400":
+          description: Error de validación
+        "401":
+          description: Token inválido o faltante
+
+  /listings/update/{id}:
+    patch:
+      tags: [Listings]
+      summary: Actualizar una publicación propia
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListingUpdateRequest"
+      responses:
+        "200":
+          description: Publicación actualizada
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+              schema:
+                $ref: "#/components/schemas/Listing"
+        "403":
+          description: No autorizado
+        "404":
+          description: Publicación no encontrada
+
+  /listings/delete/{id}:
+    delete:
+      tags: [Listings]
+      summary: Eliminar una publicación propia
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Publicación eliminada correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "403":
+          description: No autorizado
+        "404":
+          description: Publicación no encontrada
+
+  /listings/detail/{id}:
+    get:
+      tags: [Listings]
+      summary: Obtener detalle completo de una publicación
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalle de la publicación
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Listing"
+        "404":
+          description: Publicación no encontrada
+
+  /listings/recommended:
+    get:
+      tags: [Listings]
+      summary: Listado de publicaciones recomendadas
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: Publicaciones recomendadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /listings/newest:
+    get:
+      tags: [Listings]
+      summary: Listado aleatorio de las publicaciones más nuevas
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 25
+      responses:
+        "200":
+          description: Publicaciones recientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+  ###############################################
+  # FAVORITES
+  ###############################################
+
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Listar favoritos del usuario autenticado
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [newest]
+            default: newest
+      responses:
+        "200":
+          description: Lista paginada de favoritos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FavoriteItem"
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        "401":
+          description: Token inválido o faltante
+
+  /favorites/{listingId}:
+    get:
+      tags: [Favorites]
+      summary: Saber si un listing está en favoritos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Estado de favorito
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isFavorite:
+                    type: boolean
+                    example: true
+                  favoriteId:
+                    type: string
+                    nullable: true
+
+    post:
+      tags: [Favorites]
+      summary: Agregar favorito (idempotente)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Favorito creado o ya existente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  favoriteId:
+                    type: string
+        "404":
+          description: listing_not_found
+        "400":
+          description: cannot_favorite_own_listing
+
+    delete:
+      tags: [Favorites]
+      summary: Quitar favorito
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Favorito eliminado correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "401":
+          description: Token inválido o faltante
+  ###############################################
+  # CART
+  ###############################################
+
+  /cart:
+    get:
+      tags: [Cart]
+      summary: Obtener items del carrito del usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista de items del carrito
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    userId: { type: string }
+                    listingId: { type: string }
+                    createdAt:
+                      type: string
+                      format: date-time
+                    listing:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        price: { type: number }
+                        photos:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              url: { type: string }
+        "401":
+          description: Token inválido o faltante
+
+  /cart/{listingId}:
+    post:
+      tags: [Cart]
+      summary: Agregar un item al carrito
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Item agregado o ya existente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  userId: { type: string }
+                  listingId: { type: string }
+                  createdAt:
+                    type: string
+                    format: date-time
+        "404":
+          description: listing_not_found
+        "400":
+          description: cannot_add_own_listing_to_cart
+        "401":
+          description: Token inválido o faltante
+
+    delete:
+      tags: [Cart]
+      summary: Quitar un item del carrito
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Eliminado correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        "401":
+          description: Token inválido o faltante
+  ###############################################
+  # OFFERS
+  ###############################################
+
+  /offers/{listingId}:
+    post:
+      tags: [Offers]
+      summary: Crear oferta sobre un listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: listingId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  example: 1500
+      responses:
+        "201":
+          description: Oferta creada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+        "404":
+          description: listing_not_found
+        "400":
+          description: cannot_offer_on_own_listing
+        "401":
+          description: Token inválido o faltante
+
+  /offers/mine:
+    get:
+      tags: [Offers]
+      summary: Ver ofertas hechas por el usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista de ofertas enviadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Offer"
+
+  /offers/received:
+    get:
+      tags: [Offers]
+      summary: Ver ofertas recibidas en mis publicaciones
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista de ofertas recibidas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Offer"
+
+  /offers/respond/{offerId}:
+    patch:
+      tags: [Offers]
+      summary: Responder una oferta (aceptar, rechazar o contraofertar)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: offerId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ACCEPTED, REJECTED, COUNTERED]
+                counterAmount:
+                  type: number
+                  nullable: true
+                  example: 1800
+      responses:
+        "200":
+          description: Oferta actualizada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+        "404":
+          description: offer_not_found
+        "403":
+          description: not_your_offer
+        "401":
+          description: Token inválido o faltante
+  ###############################################
+  # ORDERS
+  ###############################################
+
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Crear orden de compra (carrito o compra directa)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listingIds]
+              properties:
+                listingIds:
+                  type: array
+                  items:
+                    type: string
+                  example: ["cl123", "cl456"]
+      responses:
+        "201":
+          description: Orden creada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: invalid_listing_ids
+        "401":
+          description: Token inválido o faltante
+
+    get:
+      tags: [Orders]
+      summary: Listar compras del usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista de órdenes realizadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+        "401":
+          description: Token inválido o faltante
+  ###############################################
+  # RATINGS
+  ###############################################
+
+  /ratings:
+    post:
+      tags: [Ratings]
+      summary: Crear rating para un usuario
+      description: Un usuario autenticado puede calificar a otro. No se permite auto-calificación.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetId, value]
+              properties:
+                targetId:
+                  type: string
+                  example: cl_user123
+                value:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  example: 5
+                comment:
+                  type: string
+                  nullable: true
+                  example: "Muy buena comunicación!"
+                listingId:
+                  type: string
+                  nullable: true
+                  example: cl_listing123
+      responses:
+        "200":
+          description: Rating creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rating"
+        "400":
+          description: Error de validación o auto-calificación
+        "404":
+          description: Usuario a calificar no existe
+        "401":
+          description: Token inválido o faltante
+
+  /ratings/users/{id}/ratings:
+    get:
+      tags: [Ratings]
+      summary: Obtener ratings recibidos por un usuario
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista de ratings recibidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rating"
+        "404":
+          description: Usuario no encontrado
+
+  /ratings/users/{id}/reputation:
+    get:
+      tags: [Ratings]
+      summary: Obtener reputación agregada del usuario (promedio + cantidad)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Datos de reputación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  averageScore:
+                    type: number
+                    example: 4.7
+                  totalRatings:
+                    type: number
+                    example: 15
+        "404":
+          description: Usuario no encontrado
