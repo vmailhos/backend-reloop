@@ -15,7 +15,8 @@ const allowedOrigins = [
   "http://localhost:8081",
   "http://localhost:19006",
   "http://localhost:3000",
-  "http://reloop-frontend.s3-website.us-east-2.amazonaws.com",
+  "https://d2m3tqyy5tqw5o.cloudfront.net",
+  "https://www.reloop.com"
 ];
 
 app.use(

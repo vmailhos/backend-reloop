@@ -306,7 +306,6 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
   }
 });
 
-// DELETE /listings/delete/:id
 router.delete("/delete/:id", requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -316,8 +315,14 @@ router.delete("/delete/:id", requireAuth, async (req, res, next) => {
     });
     if (!owned) return res.status(403).json({ error: "forbidden" });
 
+    // 🔥 BORRAR TODO LO RELACIONADO
+    await prisma.comment.deleteMany({ where: { listingId: id } });
+    await prisma.favorite.deleteMany({ where: { listingId: id } });
+    await prisma.offer.deleteMany({ where: { listingId: id } });
+    await prisma.cartItem.deleteMany({ where: { listingId: id } });
+    await prisma.orderItem.deleteMany({ where: { listingId: id } });
     await prisma.photo.deleteMany({ where: { listingId: id } });
-    await prisma.favorite.deleteMany({ where: { listingId: id } }).catch(() => null);
+
     await prisma.listing.delete({ where: { id } });
 
     res.json({ ok: true });

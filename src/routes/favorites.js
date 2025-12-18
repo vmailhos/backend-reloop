@@ -23,9 +23,9 @@ const idParamSchema = { params: z.object({ listingId: z.string().min(1) }) };
 // GET /favorites -> lista favoritos del usuario
 router.get("/", requireAuth, validate(listQuerySchema), async (req, res, next) => {
   try {
-    // Aseguramos número aunque el front mande string
-    const page = Number(req.query.page);
-    const pageSize = Number(req.query.pageSize);
+    const page = Number(req.query.page ?? 1);
+    const pageSize = Number(req.query.pageSize ?? 20);
+
     const skip = (page - 1) * pageSize;
     const take = pageSize;
 
@@ -39,7 +39,7 @@ router.get("/", requireAuth, validate(listQuerySchema), async (req, res, next) =
           listing: {
             include: {
               photos: { take: 1, orderBy: { id: "asc" } },
-              seller: { select: { id: true, email: true } },
+              seller: { select: { id: true, username: true, avatar: true } },
             },
           },
         },
@@ -48,14 +48,14 @@ router.get("/", requireAuth, validate(listQuerySchema), async (req, res, next) =
     ]);
 
     const items = favs
-      .filter((f) => f.listing) // por si el listing fue borrado
+      .filter((f) => f.listing)
       .map((f) => {
         const L = toNumberPrice(f.listing);
         return {
           id: L.id,
           title: L.title,
           price: L.price,
-          category: L.category,
+          brand: L.brand,
           condition: L.condition,
           photo: L.photos[0]?.url || null,
           seller: L.seller,
