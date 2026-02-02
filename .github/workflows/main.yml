@@ -8,12 +8,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup SSH
-        run: |
-          mkdir -p "$HOME/.ssh"
-          printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> "$HOME/.ssh/known_hosts"
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            /home/ubuntu/deploy.sh
