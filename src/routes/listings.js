@@ -3,6 +3,23 @@ const { prisma } = require("../db");
 const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
+const { normalizeListing } = require("../utils/photoUrls");
+const optionalAuth = require("../middlewares/optionalAuth");
+const { enrichListingWithDiscount, buildDiscountFilters } = require("../utils/discountUtils");
+
+// Helper: Build seller filter to exclude current user's listings
+const getSellerFilter = (req) => {
+  if (!req.user?.id) return {};
+
+  return {
+    NOT: {
+      seller: {
+        id: req.user.id,
+      },
+    },
+  };
+};
+
 
 //
 // ENUMS DE TALLE (CORRECTOS)
@@ -42,6 +59,12 @@ const KidsShoeSizeEnum = z.enum([
 const toNumberPrice = (l) =>
   l && typeof l.price === "string" ? { ...l, price: Number(l.price) } : l;
 
+// Helper to normalize a single listing with photos + discount info
+const enrichListing = (req, listing) => {
+  const normalized = normalizeListing(req, toNumberPrice(listing));
+  return enrichListingWithDiscount(normalized);
+};
+
 // ---------- Schemas ----------
 const createListingSchema = {
   body: z.object({
@@ -68,8 +91,9 @@ const createListingSchema = {
     sizeAccessory: AccessorySizeEnum.optional(),
     sizeKids: KidsSizeEnum.optional(),
     sizeKidsShoe: KidsShoeSizeEnum.optional(),
-
-    photos: z.array(z.object({ url: z.string().min(1) })).default([]),
+    
+    // Discount: 0-90% or null/undefined for no discount
+    discountPercent: z.coerce.number().min(0, "Descuento mínimo es 0%").max(90, "Descuento máximo es 90%").optional().nullable(),
   }),
 };
 
@@ -92,9 +116,14 @@ const listQuerySchema = {
 
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
+    
+    // Discount filters
+    onSaleOnly: z.coerce.boolean().optional(),
+    minDiscount: z.coerce.number().min(0).max(90).optional(),
+    
     page: z.coerce.number().int().positive().default(1),
     pageSize: z.coerce.number().int().positive().max(100).default(20),
-    sort: z.enum(["newest", "price_asc", "price_desc"]).default("newest").optional(),
+    sort: z.enum(["newest", "price_asc", "price_desc", "discount_desc"]).default("newest").optional(),
   }),
 };
 
@@ -113,6 +142,9 @@ const updateListingSchema = {
     category: z.enum(["HOMBRE", "MUJER", "NINOS"]).optional(),
     subCategory: z.enum(["ROPA", "ACCESORIOS", "CALZADOS"]).optional(),
     subSubCategory: z.string().optional(),
+    
+    // Discount: 0-90% or null to remove discount
+    discountPercent: z.coerce.number().min(0, "Descuento mínimo es 0%").max(90, "Descuento máximo es 90%").optional().nullable(),
 
     brand: z.string().optional(),
     color: z.string().optional(),
@@ -123,16 +155,22 @@ const updateListingSchema = {
     sizeAccessory: AccessorySizeEnum.optional(),
     sizeKids: KidsSizeEnum.optional(),
     sizeKidsShoe: KidsShoeSizeEnum.optional(),
-
-    photos: z.array(z.object({ url: z.string().min(1) })).optional(),
   }),
 };
 
 // ---------- Rutas ----------
 
 // GET /listings/all
-router.get("/all", validate(listQuerySchema), async (req, res, next) => {
+router.get("/all", optionalAuth, validate(listQuerySchema), async (req, res, next) => {
   try {
+    // Debug logging
+    const sellerFilter = getSellerFilter(req);
+    if (req.user) {
+      console.log(`[/listings/all] Authenticated user: ${req.user.id} (${req.user.username}) - will exclude their listings`);
+    } else {
+      console.log("[/listings/all] Unauthenticated request - showing all listings");
+    }
+
     const {
       search,
       category,
@@ -149,6 +187,8 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
       sizeKidsShoe,
       minPrice,
       maxPrice,
+      onSaleOnly,
+      minDiscount,
       page,
       pageSize,
       sort,
@@ -167,6 +207,8 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
     }
 
     const where = {
+      status: "available",
+      ...getSellerFilter(req),
       ...(category && { category }),
 
       ...(subCategory && subCategory !== "Todos" && { subCategory }),
@@ -204,15 +246,28 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
             },
           }
         : {}),
+      
+      // Apply discount filters
+      ...buildDiscountFilters({ onSaleOnly, minDiscount }),
     };
 
 
     let orderBy = { createdAt: "desc" };
     if (sort === "price_asc") orderBy = { price: "asc" };
     if (sort === "price_desc") orderBy = { price: "desc" };
+    if (sort === "discount_desc") orderBy = { discountPercent: "desc" };
 
-    const skip = (Number(page) - 1) * Number(pageSize);
-    const take = Number(pageSize);
+    const rawPage = Number(page);
+    const rawPageSize = Number(pageSize);
+
+    const safePage = Number.isFinite(rawPage) && rawPage > 0 ? Math.trunc(rawPage) : 1;
+    const safePageSize =
+      Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.trunc(rawPageSize) : 20;
+
+    const skip = Number.isFinite((safePage - 1) * safePageSize)
+      ? (safePage - 1) * safePageSize
+      : 0;
+    const take = Number.isFinite(safePageSize) ? safePageSize : 20;
 
     const [items, total] = await Promise.all([
       prisma.listing.findMany({
@@ -229,10 +284,10 @@ router.get("/all", validate(listQuerySchema), async (req, res, next) => {
     ]);
 
     res.json({
-      items: items.map(toNumberPrice),
+      items: items.map((item) => enrichListing(req, item)),
       total,
-      page: Number(page),
-      pageSize: Number(pageSize),
+      page: safePage,
+      pageSize: safePageSize,
     });
   } catch (e) {
     next(e);
@@ -245,9 +300,22 @@ router.get("/mine", requireAuth, async (req, res, next) => {
     const items = await prisma.listing.findMany({
       where: { sellerId: req.user.id },
       orderBy: { createdAt: "desc" },
-      include: { photos: true },
+      include: {
+        photos: true,
+        seller: { select: { id: true, username: true, country: true, avatar: true } },
+      },
     });
-    res.json({ items: items.map(toNumberPrice), total: items.length });
+    
+    // Explicitly enrich each listing with discount data
+    const enrichedItems = items.map((item) => {
+      const normalized = normalizeListing(req, toNumberPrice(item));
+      return enrichListingWithDiscount(normalized);
+    });
+    
+    res.json({
+      items: enrichedItems,
+      total: items.length,
+    });
   } catch (e) {
     next(e);
   }
@@ -256,16 +324,49 @@ router.get("/mine", requireAuth, async (req, res, next) => {
 // POST /listings/create
 router.post("/create", requireAuth, validate(createListingSchema), async (req, res, next) => {
   try {
+    // Normalize photos: accept array of strings (paths) or objects with url field
+    const photosList = req.body.photos || [];
+    const validPhotos = Array.isArray(photosList)
+      ? photosList
+          .map((p) => {
+            if (typeof p === "string") return { url: p };
+            if (p && typeof p === "object" && p.url) return { url: p.url };
+            return null;
+          })
+          .filter((p) => p !== null && p.url && p.url.length > 0)
+      : [];
+
     const created = await prisma.listing.create({
       data: {
-        ...req.body,
+        title: req.body.title,
+        description: req.body.description,
+        price: req.body.price,
+        condition: req.body.condition,
+        category: req.body.category,
+        subCategory: req.body.subCategory,
+        subSubCategory: req.body.subSubCategory,
+        brand: req.body.brand,
+        color: req.body.color,
+        sizeTop: req.body.sizeTop,
+        sizeBottom: req.body.sizeBottom,
+        sizeShoe: req.body.sizeShoe,
+        sizeAccessory: req.body.sizeAccessory,
+        sizeKids: req.body.sizeKids,
+        sizeKidsShoe: req.body.sizeKidsShoe,
+        discountPercent: req.body.discountPercent || null,
         sellerId: req.user.id,
-        photos: { create: req.body.photos.map((p) => ({ url: p.url })) },
+        ...(validPhotos.length > 0
+          ? {
+              photos: {
+                create: validPhotos,
+              },
+            }
+          : {}),
       },
       include: { photos: true },
     });
 
-    res.status(201).json(toNumberPrice(created));
+    res.status(201).json(enrichListing(req, created));
   } catch (e) {
     next(e);
   }
@@ -284,15 +385,42 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
 
     const { photos, ...data } = req.body;
 
+    // Normalize photos: accept array of strings (paths) or objects with url field
+    const photosList = photos || [];
+    const validPhotos = Array.isArray(photosList)
+      ? photosList
+          .map((p) => {
+            if (typeof p === "string") return { url: p };
+            if (p && typeof p === "object" && p.url) return { url: p.url };
+            return null;
+          })
+          .filter((p) => p !== null && p.url && p.url.length > 0)
+      : [];
+
     const updated = await prisma.listing.update({
       where: { id },
       data: {
-        ...data,
-        ...(photos
+        title: data.title,
+        description: data.description,
+        price: data.price,
+        condition: data.condition,
+        category: data.category,
+        subCategory: data.subCategory,
+        subSubCategory: data.subSubCategory,
+        brand: data.brand,
+        color: data.color,
+        sizeTop: data.sizeTop,
+        sizeBottom: data.sizeBottom,
+        sizeShoe: data.sizeShoe,
+        sizeAccessory: data.sizeAccessory,
+        sizeKids: data.sizeKids,
+        sizeKidsShoe: data.sizeKidsShoe,
+        discountPercent: data.discountPercent !== undefined ? data.discountPercent : undefined,
+        ...(validPhotos.length > 0
           ? {
               photos: {
                 deleteMany: { listingId: id },
-                create: photos.map((p) => ({ url: p.url })),
+                create: validPhotos,
               },
             }
           : {}),
@@ -300,7 +428,7 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
       include: { photos: true },
     });
 
-    res.json(toNumberPrice(updated));
+    res.json(enrichListing(req, updated));
   } catch (e) {
     next(e);
   }
@@ -351,6 +479,7 @@ router.get("/detail/:id", async (req, res, next) => {
                 id: true,
                 title: true,
                 price: true,
+                discountPercent: true,
                 photos: { take: 1 },
               },
             },
@@ -361,13 +490,21 @@ router.get("/detail/:id", async (req, res, next) => {
 
     if (!item) return res.status(404).json({ error: "not_found" });
 
-    res.json(toNumberPrice(item));
+    // Enrich the main listing and nested seller listings with discount info
+    const enrichedItem = enrichListing(req, item);
+    if (enrichedItem.seller?.listings) {
+      enrichedItem.seller.listings = enrichedItem.seller.listings.map(listing => 
+        enrichListingWithDiscount(normalizeListing(req, toNumberPrice(listing)))
+      );
+    }
+
+    res.json(enrichedItem);
   } catch (e) {
     next(e);
   }
 });
 // GET /listings/recommended 
-router.get("/recommended", async (req, res, next) => {
+router.get("/recommended", optionalAuth, async (req, res, next) => {
   try {
     const limit = Number(req.query.limit) || 25;
 
@@ -376,6 +513,10 @@ router.get("/recommended", async (req, res, next) => {
       take: 100,
       orderBy: {
         favorites: { _count: "desc" },
+      },
+      where: {
+        status: "available",
+        ...getSellerFilter(req),
       },
       include: {
         photos: true,
@@ -394,8 +535,10 @@ router.get("/recommended", async (req, res, next) => {
     // 2) Random shuffle
     const shuffled = top.sort(() => Math.random() - 0.5);
 
-    // 3) Convertir precio a número y devolver limit
-    res.json(shuffled.slice(0, limit).map(toNumberPrice));
+    // 3) Enrich with discount info and return limit
+    res.json(
+      shuffled.slice(0, limit).map((item) => enrichListing(req, item))
+    );
 
   } catch (e) {
     next(e);
@@ -403,7 +546,7 @@ router.get("/recommended", async (req, res, next) => {
 });
 
 // GET /listings/newest
-router.get("/newest", async (req, res, next) => {
+router.get("/newest", optionalAuth, async (req, res, next) => {
   try {
     const limit = Number(req.query.limit) || 25;
 
@@ -411,6 +554,10 @@ router.get("/newest", async (req, res, next) => {
       take: 100,
       orderBy: {
         createdAt: "desc",
+      },
+      where: {
+        status: "available",
+        ...getSellerFilter(req),
       },
       include: {
         photos: true,
@@ -428,9 +575,63 @@ router.get("/newest", async (req, res, next) => {
     // 2) Random shuffle
     const shuffled = latest.sort(() => Math.random() - 0.5);
 
-    // 3) Convertir precios y devolver limit
-    res.json(shuffled.slice(0, limit).map(toNumberPrice));
+    // 3) Enrich with discount info and return limit
+    res.json(
+      shuffled.slice(0, limit).map((item) => enrichListing(req, item))
+    );
 
+  } catch (e) {
+    next(e);
+  }
+});
+// GET /listings/by-user/:sellerId
+router.get("/by-user/:sellerId", async (req, res, next) => {
+  try {
+    const { sellerId } = req.params;
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 20;
+
+    const safePage = page > 0 ? page : 1;
+    const safePageSize = pageSize > 0 && pageSize <= 100 ? pageSize : 20;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    const where = {
+      sellerId,
+      status: "available",
+    };
+
+    // Note: by-user endpoint shows a specific seller's profile listings
+    // Do NOT filter out own listings here - sellers should see their own on their profile
+
+    const [items, total] = await Promise.all([
+      prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          photos: true,
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+              country: true,
+            },
+          },
+        },
+      }),
+      prisma.listing.count({ where }),
+    ]);
+
+    res.json({
+      items: items.map((item) => enrichListing(req, item)),
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+    });
   } catch (e) {
     next(e);
   }

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { prisma } = require("../db");
 const requireAuth = require("../middlewares/requireAuth");
+const { normalizeListing } = require("../utils/photoUrls");
 
 // GET /cart → obtener carrito del usuario
 router.get("/", requireAuth, async (req, res, next) => {
@@ -14,7 +15,10 @@ router.get("/", requireAuth, async (req, res, next) => {
       },
     });
 
-    res.json(items);
+    const normalized = items.map((item) =>
+      item.listing ? { ...item, listing: normalizeListing(req, item.listing) } : item
+    );
+    res.json(normalized);
   } catch (e) {
     next(e);
   }

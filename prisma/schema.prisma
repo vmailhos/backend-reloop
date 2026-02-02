@@ -36,6 +36,8 @@ model User {
   comments       Comment[]
   cart           CartItem[]
   orders         Order[]
+  notifications  Notification[]
+  notificationPreference NotificationPreference?
 }
 
 //
@@ -62,6 +64,11 @@ model Listing {
   sizeKidsShoe  KidsShoeSize?
 
   status String @default("available")
+  
+  // Discount system: percentage-based discount (0-90%)
+  // Original price is preserved in 'price' field
+  // Discounted price is calculated on-the-fly
+  discountPercent Decimal? @db.Decimal(5, 2)
 
   sellerId String
   seller   User   @relation(fields: [sellerId], references: [id])
@@ -362,4 +369,49 @@ enum OrderStatus {
   SHIPPED
   COMPLETED
   CANCELLED
+}
+
+//
+// NOTIFICATIONS
+//
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+
+  type        String
+  title       String
+  message     String
+  metadata    Json?
+
+  read        Boolean  @default(false)
+
+  // Future delivery channels
+  sendEmail   Boolean  @default(false)
+  sendPush    Boolean  @default(false)
+  emailedAt   DateTime?
+  pushedAt    DateTime?
+
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id        String @id @default(cuid())
+  userId    String @unique
+
+  emailSales        Boolean @default(true)
+  emailPurchases    Boolean @default(true)
+  emailFavorites    Boolean @default(false)
+
+  pushSales         Boolean @default(true)
+  pushPurchases     Boolean @default(true)
+  pushFavorites     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

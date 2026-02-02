@@ -4,6 +4,8 @@ const { prisma } = require("../db");
 const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
+const { toPublicPhotoUrl } = require("../utils/photoUrls");
+const { createNotification } = require("../utils/notificationHelper");
 
 // helpers
 const toNumberPrice = (l) =>
@@ -57,7 +59,7 @@ router.get("/", requireAuth, validate(listQuerySchema), async (req, res, next) =
           price: L.price,
           brand: L.brand,
           condition: L.condition,
-          photo: L.photos[0]?.url || null,
+          photo: toPublicPhotoUrl(req, L.photos[0]?.url) || null,
           seller: L.seller,
           favoriteId: f.id,
         };
@@ -100,6 +102,22 @@ router.post("/:listingId", requireAuth, validate(idParamSchema), async (req, res
       create: { userId: req.user.id, listingId },
       update: {},
     });
+
+    // Create notification for seller (only on new favorite)
+    const isNew = fav.createdAt && fav.createdAt.getTime() >= new Date().getTime() - 1000;
+    if (isNew) {
+      await prisma.notification.create({
+        data: {
+          userId: listing.sellerId,
+          type: "favorite",
+          title: "A alguien le gustó tu producto",
+          message: "Un usuario guardó tu publicación",
+          metadata: { listingId },
+          sendEmail: false,
+          sendPush: true,
+        },
+      });
+    }
 
     res.status(201).json({ ok: true, favoriteId: fav.id });
   } catch (e) {

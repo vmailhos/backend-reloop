@@ -3,6 +3,7 @@ const { prisma } = require("../db");
 const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
+const { normalizeListing } = require("../utils/photoUrls");
 
 //
 // Schemas
@@ -74,7 +75,11 @@ router.get("/mine", requireAuth, async (req, res, next) => {
       },
     });
 
-    res.json(offers);
+    const normalized = offers.map((offer) => ({
+      ...offer,
+      listing: offer.listing ? normalizeListing(req, offer.listing) : offer.listing,
+    }));
+    res.json(normalized);
   } catch (e) {
     next(e);
   }
@@ -92,7 +97,11 @@ router.get("/received", requireAuth, async (req, res, next) => {
       },
     });
 
-    res.json(offers);
+    const normalized = offers.map((offer) => ({
+      ...offer,
+      listing: offer.listing ? normalizeListing(req, offer.listing) : offer.listing,
+    }));
+    res.json(normalized);
   } catch (e) {
     next(e);
   }

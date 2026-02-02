@@ -38,10 +38,8 @@ app.use(morgan("dev"));
 // 1) Servir estáticos de "public"
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// 2) En dev, servir "uploads" como estático
-if (process.env.NODE_ENV !== "production") {
-  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-}
+// 2) Servir "uploads" como estático
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Rutas simples
 app.get("/", (_req, res) => res.send("Backend de Reloop corriendo..."));
@@ -55,10 +53,25 @@ app.use("/favorites", require("./routes/favorites"));
 app.use("/users", require("./routes/users"));
 app.use("/ratings", require("./routes/ratings"));
 app.use("/comments", require("./routes/comments"));
+app.use("/cart", require("./routes/cart"));
+app.use("/orders", require("./routes/orders"));
+app.use("/notifications", require("./routes/notifications"));
 
-// Debug opcional
+// Debug endpoints
 app.post("/_debug/body", (req, res) => {
   res.json({ body: req.body, headers: req.headers });
+});
+
+// Debug: Check authentication status
+app.get("/_debug/auth", require("./middlewares/optionalAuth"), (req, res) => {
+  res.json({
+    authenticated: !!req.user,
+    userId: req.user?.id || null,
+    username: req.user?.username || null,
+    headers: {
+      authorization: req.headers.authorization ? "***present***" : "***missing***",
+    },
+  });
 });
 
 // Swagger UI
