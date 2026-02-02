@@ -13,7 +13,8 @@ jobs:
 
       - name: Setup SSH
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.SSH_HOST }}_
+          mkdir -p "$HOME/.ssh"
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> "$HOME/.ssh/known_hosts"
+
