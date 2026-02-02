@@ -8,18 +8,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Write SSH key
-        run: |
-          mkdir -p /home/runner/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /home/runner/.ssh/reloop_ci
-          chmod 600 /home/runner/.ssh/reloop_ci
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key_path: /home/runner/.ssh/reloop_ci
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd backend-reloop
             ./deploy.sh
