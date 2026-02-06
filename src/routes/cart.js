@@ -10,10 +10,21 @@ router.get("/", requireAuth, async (req, res, next) => {
       where: { userId: req.user.id },
       include: {
         listing: {
-          include: { photos: { take: 1 } },
+          include: {
+            photos: { take: 1 },
+            seller: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+                country: true
+              }
+            }
+          },
         },
-      },
-    });
+      }
+      }
+    );
 
     const normalized = items.map((item) =>
       item.listing ? { ...item, listing: normalizeListing(req, item.listing) } : item

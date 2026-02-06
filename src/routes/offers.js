@@ -4,6 +4,7 @@ const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
 const { normalizeListing } = require("../utils/photoUrls");
+const { sendOfferEmailToSeller } = require("../email/sendOfferEmailToSeller");
 
 //
 // Schemas
@@ -41,11 +42,24 @@ router.post(
       const { amount } = req.body;
       const { listingId } = req.params;
 
-      const listing = await prisma.listing.findUnique({ where: { id: listingId } });
+      const listing = await prisma.listing.findUnique({
+        where: { id: listingId },
+        include: { seller: { select: { id: true, email: true, username: true, name: true } } },
+      });
       if (!listing) return res.status(404).json({ error: "listing_not_found" });
 
       if (listing.sellerId === req.user.id)
         return res.status(400).json({ error: "cannot_offer_on_own_listing" });
+      const existing = await prisma.offer.findFirst({
+        where: {
+          listingId,
+          buyerId: req.user.id,
+          status: { in: ["PENDING", "COUNTERED"] },
+        },
+      });
+
+      if (existing)
+        return res.status(400).json({ error: "offer_already_exists" });
 
       const offer = await prisma.offer.create({
         data: {
@@ -55,6 +69,24 @@ router.post(
           sellerId: listing.sellerId,
         },
       });
+
+      (async () => {
+        try {
+          if (!listing.seller?.email) return;
+          console.log("[MAIL] Intentando enviar mail de nueva oferta");
+          console.log("[MAIL] Destinatario:", listing.seller.email);
+          await sendOfferEmailToSeller({
+            email: listing.seller.email,
+            name: listing.seller.name || listing.seller.username,
+            title: listing.title,
+            amount,
+          });
+          console.log("[MAIL] Mail de nueva oferta enviado correctamente");
+        } catch (err) {
+          console.error("[MAIL] Error enviando mail de nueva oferta");
+          console.error(err);
+        }
+      })();
 
       res.status(201).json(offer);
     } catch (e) {
@@ -125,13 +157,20 @@ router.patch(
 
       const updated = await prisma.offer.update({
         where: { id: offerId },
-        data: {
-          status,
-          counterOfferAmount: status === "COUNTERED" ? counterAmount : null,
-        },
+          data: {
+            status,
+            counterOfferAmount: status === "COUNTERED" ? counterAmount : null,
+            acceptedPrice:
+              status === "ACCEPTED"
+                ? offer.counterOfferAmount ?? offer.amount
+                : null,
+          },
       });
 
       res.json(updated);
+      if (status === "ACCEPTED") {
+}
+
     } catch (e) {
       next(e);
     }

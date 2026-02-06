@@ -1,4 +1,6 @@
 // src/app.js
+
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -8,6 +10,7 @@ const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 
 const app = express();
+console.log("AWS KEY:", process.env.AWS_ACCESS_KEY_ID ? "OK" : "NO");
 
 // Middlewares base
 app.use(helmet());
@@ -15,8 +18,12 @@ const allowedOrigins = [
   "http://localhost:8081",
   "http://localhost:19006",
   "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+
   "https://d2m3tqyy5tqw5o.cloudfront.net",
-  "https://www.reloop.com"
+  "https://reloop-uy.com",
+  "https://www.reloop-uy.com"
 ];
 
 app.use(
@@ -56,6 +63,8 @@ app.use("/comments", require("./routes/comments"));
 app.use("/cart", require("./routes/cart"));
 app.use("/orders", require("./routes/orders"));
 app.use("/notifications", require("./routes/notifications"));
+app.use("/offers", require("./routes/offers"));
+app.use("/uploads", require("./routes/uploads"));
 
 // Debug endpoints
 app.post("/_debug/body", (req, res) => {

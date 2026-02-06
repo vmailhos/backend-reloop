@@ -6,6 +6,7 @@ const { z } = require("zod");
 const { normalizeListing } = require("../utils/photoUrls");
 const optionalAuth = require("../middlewares/optionalAuth");
 const { enrichListingWithDiscount, buildDiscountFilters } = require("../utils/discountUtils");
+const { sendNewListingEmail } = require("../email/sendNewListingEmail");
 
 // Helper: Build seller filter to exclude current user's listings
 const getSellerFilter = (req) => {
@@ -94,6 +95,10 @@ const createListingSchema = {
     
     // Discount: 0-90% or null/undefined for no discount
     discountPercent: z.coerce.number().min(0, "Descuento mínimo es 0%").max(90, "Descuento máximo es 90%").optional().nullable(),
+    photos: z.array(z.union([
+      z.string().url(),
+      z.object({ url: z.string().url() })
+    ])).optional(),
   }),
 };
 
@@ -326,15 +331,16 @@ router.post("/create", requireAuth, validate(createListingSchema), async (req, r
   try {
     // Normalize photos: accept array of strings (paths) or objects with url field
     const photosList = req.body.photos || [];
-    const validPhotos = Array.isArray(photosList)
-      ? photosList
-          .map((p) => {
-            if (typeof p === "string") return { url: p };
-            if (p && typeof p === "object" && p.url) return { url: p.url };
-            return null;
-          })
-          .filter((p) => p !== null && p.url && p.url.length > 0)
-      : [];
+    const validPhotos = photosList
+      .map((p, index) => {
+        if (typeof p === "string") return { url: p, order: index };
+        if (p && typeof p === "object" && p.url) {
+          return { url: p.url, order: index };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
 
     const created = await prisma.listing.create({
       data: {
@@ -365,6 +371,22 @@ router.post("/create", requireAuth, validate(createListingSchema), async (req, r
       },
       include: { photos: true },
     });
+
+    (async () => {
+      try {
+        console.log("[MAIL] Intentando enviar mail de nueva publicación");
+        console.log("[MAIL] Destinatario:", req.user.email);
+        await sendNewListingEmail({
+          email: req.user.email,
+          name: req.user.name || req.user.username,
+          title: created.title,
+        });
+        console.log("[MAIL] Mail de nueva publicación enviado correctamente");
+      } catch (err) {
+        console.error("[MAIL] Error enviando mail de nueva publicación");
+        console.error(err);
+      }
+    })();
 
     res.status(201).json(enrichListing(req, created));
   } catch (e) {

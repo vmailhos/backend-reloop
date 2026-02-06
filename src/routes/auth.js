@@ -1,12 +1,14 @@
+
 const router = require("express").Router();
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const { prisma } = require("../db");
 const validate = require("../middlewares/validate");
 const { z } = require("zod");
-
-
 const { JWT_SECRET } = require("../config");
+const { sendWelcomeEmail } = require("../email/sendWelcomeEmail");
+const { sendPasswordResetEmail } = require("../email/sendPasswordResetEmail");
 
 // ---------- Schemas ----------
 const emailSchema = z.string().trim().toLowerCase().email("Email inválido");
@@ -37,8 +39,22 @@ const loginSchema = {
   }),
 };
 
+const forgotPasswordSchema = {
+  body: z.object({
+    email: emailSchema,
+  }),
+};
+
+const resetPasswordSchema = {
+  body: z.object({
+    token: z.string().min(20, "Token inválido"),
+    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+  }),
+};
+
 // ---------- Rutas ----------
 
+// ✅ POST /auth/signup
 // ✅ POST /auth/signup
 router.post("/signup", validate(signupSchema), async (req, res, next) => {
   try {
@@ -46,13 +62,13 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
 
     // 🔹 Verificar duplicados
     const existingEmail = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() }, // email en minúsculas
+      where: { email: email.trim().toLowerCase() },
     });
     if (existingEmail)
       return res.status(409).json({ error: "email_taken" });
 
     const existingUsername = await prisma.user.findUnique({
-      where: { username: username.trim() }, // username exacto, no toLowerCase
+      where: { username: username.trim() },
     });
     if (existingUsername)
       return res.status(409).json({ error: "username_taken" });
@@ -62,13 +78,15 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
 
     // 🔹 Generar avatar
     const initial = username.charAt(0).toUpperCase();
-    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(initial)}&background=random&color=fff&size=128`;
+    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      initial
+    )}&background=random&color=fff&size=128`;
 
-    // 🔹 Crear usuario (username tal cual lo escribió)
+    // 🔹 Crear usuario
     const user = await prisma.user.create({
       data: {
         email: email.trim().toLowerCase(),
-        username: username.trim(), // 👈 se guarda tal cual
+        username: username.trim(),
         password: hash,
         avatar,
         name,
@@ -84,7 +102,23 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
       },
     });
 
-    // 🔹 Crear token con los datos del usuario
+    console.log("[MAIL] Intentando enviar mail de bienvenida");
+    console.log("[MAIL] Destinatario:", user.email);
+    // ✉️ ENVIAR MAIL DE BIENVENIDA (NO BLOQUEANTE)
+    sendWelcomeEmail({
+      email: user.email,
+      name: user.name,
+      username: user.username,
+    })
+      .then(() => {
+        console.log("[MAIL] Mail de bienvenida enviado correctamente");
+      })
+      .catch((err) => {
+        console.error("[MAIL] Error enviando mail de bienvenida");
+        console.error(err);
+      });
+
+    // 🔹 Crear token
     const token = jwt.sign(
       {
         sub: user.id,
@@ -104,6 +138,7 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
     next(e);
   }
 });
+
 // ✅ POST /auth/login
 router.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
@@ -219,6 +254,89 @@ router.post("/google", async (req, res, next) => {
     return res.json({ token: jwtToken, user });
   } catch (e) {
     console.error("POST /auth/google error:", e);
+    next(e);
+  }
+});
+
+// ✅ POST /auth/forgot-password
+router.post("/forgot-password", validate(forgotPasswordSchema), async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: { id: true, email: true, name: true, username: true },
+    });
+
+    if (user) {
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: token,
+          resetPasswordExpiresAt: expiresAt,
+        },
+      });
+
+      (async () => {
+        try {
+          console.log("[MAIL] Intentando enviar mail de recuperación");
+          console.log("[MAIL] Destinatario:", user.email);
+          await sendPasswordResetEmail({
+            email: user.email,
+            name: user.name || user.username,
+            token,
+          });
+          console.log("[MAIL] Mail de recuperación enviado correctamente");
+        } catch (err) {
+          console.error("[MAIL] Error enviando mail de recuperación");
+          console.error(err);
+        }
+      })();
+    }
+
+    return res.json({
+      message: "Si el email existe, te enviaremos un enlace de recuperación.",
+    });
+  } catch (e) {
+    console.error("POST /auth/forgot-password error:", e);
+    next(e);
+  }
+});
+
+// ✅ POST /auth/reset-password
+router.post("/reset-password", validate(resetPasswordSchema), async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetPasswordToken: token,
+        resetPasswordExpiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hash,
+        resetPasswordToken: null,
+        resetPasswordExpiresAt: null,
+      },
+    });
+
+    return res.json({ message: "Contraseña actualizada correctamente" });
+  } catch (e) {
+    console.error("POST /auth/reset-password error:", e);
     next(e);
   }
 });

@@ -5,6 +5,8 @@ const { z } = require("zod");
 const validate = require("../middlewares/validate");
 const { normalizeListing } = require("../utils/photoUrls");
 const { createNotification } = require("../utils/notificationHelper");
+const { sendSaleEmailToSeller } = require("../email/sendSaleEmailToSeller");
+const { sendPurchaseEmailToBuyer } = require("../email/sendPurchaseEmailToBuyer");
 
 const createOrderSchema = {
   body: z.object({
@@ -24,6 +26,9 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
 
     const listings = await prisma.listing.findMany({
       where: { id: { in: uniqueListingIds } },
+      include: {
+        seller: { select: { id: true, email: true, username: true, name: true } },
+      },
     });
 
     if (listings.length !== uniqueListingIds.length)
@@ -92,9 +97,54 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
           );
         }
       }
+      
+    await tx.offer.updateMany({
+      where: {
+        listingId: { in: uniqueListingIds },
+        status: { in: ["PENDING", "COUNTERED", "ACCEPTED"] },
+      },
+      data: {
+        status: "EXPIRED",
+        acceptedPrice: null,
+      },
+    });
 
       return createdOrder;
     });
+
+    (async () => {
+      try {
+        console.log("[MAIL] Intentando enviar mails de compra y venta");
+
+        const buyerName = req.user.name || req.user.username;
+        for (const listing of listings) {
+          console.log("[MAIL] Destinatario compra:", req.user.email);
+          await sendPurchaseEmailToBuyer({
+            email: req.user.email,
+            name: buyerName,
+            title: listing.title,
+          });
+          console.log("[MAIL] Mail de compra enviado correctamente");
+        }
+
+        for (const listing of listings) {
+          const seller = listing.seller;
+          if (!seller?.email) continue;
+          console.log("[MAIL] Destinatario venta:", seller.email);
+          await sendSaleEmailToSeller({
+            email: seller.email,
+            name: seller.name || seller.username,
+            title: listing.title,
+          });
+          console.log("[MAIL] Mail de venta enviado correctamente");
+        }
+
+        console.log("[MAIL] Proceso de mails de compra y venta finalizado");
+      } catch (err) {
+        console.error("[MAIL] Error enviando mails de compra/venta");
+        console.error(err);
+      }
+    })();
 
     res.status(201).json({
       order: {

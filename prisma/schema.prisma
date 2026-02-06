@@ -17,6 +17,8 @@ model User {
   email     String    @unique
   username  String    @unique
   password  String
+  resetPasswordToken     String?
+  resetPasswordExpiresAt DateTime?
   name      String?
   lastName  String?
   phone     String?
@@ -26,17 +28,16 @@ model User {
   country   String?
   createdAt DateTime  @default(now())
 
-  listings        Listing[]
-  favorites       Favorite[]
-  ratingsGiven    Rating[]   @relation("ratings_given")
-  ratingsReceived Rating[]   @relation("ratings_received")
-  offersSent     Offer[] @relation("buyer_offers")
-  offersReceived Offer[] @relation("seller_offers")
-
-  comments       Comment[]
-  cart           CartItem[]
-  orders         Order[]
-  notifications  Notification[]
+  listings               Listing[]
+  favorites              Favorite[]
+  ratingsGiven           Rating[]                @relation("ratings_given")
+  ratingsReceived        Rating[]                @relation("ratings_received")
+  offersSent             Offer[]                 @relation("buyer_offers")
+  offersReceived         Offer[]                 @relation("seller_offers")
+  comments               Comment[]
+  cart                   CartItem[]
+  orders                 Order[]
+  notifications          Notification[]
   notificationPreference NotificationPreference?
 }
 
@@ -64,7 +65,7 @@ model Listing {
   sizeKidsShoe  KidsShoeSize?
 
   status String @default("available")
-  
+
   // Discount system: percentage-based discount (0-90%)
   // Original price is preserved in 'price' field
   // Discounted price is calculated on-the-fly
@@ -73,15 +74,15 @@ model Listing {
   sellerId String
   seller   User   @relation(fields: [sellerId], references: [id])
 
-  photos    Photo[]
-  favorites Favorite[]
-  ratings   Rating[]
-  createdAt DateTime   @default(now())
-  comments Comment[]
-  offers   Offer[]
+  photos     Photo[]
+  favorites  Favorite[]
+  ratings    Rating[]
+  createdAt  DateTime    @default(now())
+  comments   Comment[]
+  offers     Offer[]
   orderItems OrderItem[]
-  cartItems CartItem[]  
-  
+  cartItems  CartItem[]
+
   @@index([title])
   @@index([category])
   @@index([subCategory])
@@ -95,10 +96,11 @@ model Listing {
 // PHOTOS
 //
 model Photo {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   url       String
+  order     Int      // 👈 NUEVO
+  listing   Listing  @relation(fields: [listingId], references: [id])
   listingId String
-  listing   Listing @relation(fields: [listingId], references: [id])
 }
 
 //
@@ -134,22 +136,30 @@ model Rating {
 }
 
 model Offer {
-  id          String   @id @default(cuid())
-  amount      Decimal  @db.Decimal(10,2)
-  status      OfferStatus @default(PENDING)
-  createdAt   DateTime @default(now())
+  id String @id @default(cuid())
 
-  listingId   String
-  listing     Listing  @relation(fields: [listingId], references: [id])
+  listingId String
+  buyerId   String
+  sellerId  String
 
-  buyerId     String
-  buyer       User     @relation("buyer_offers", fields: [buyerId], references: [id])
+  amount Decimal @db.Decimal(10, 2) // oferta inicial del buyer
 
-  sellerId    String
-  seller      User     @relation("seller_offers", fields: [sellerId], references: [id])
+  status OfferStatus @default(PENDING)
 
-  // Para contraofertas
-  counterOfferAmount Decimal? @db.Decimal(10,2)
+  counterOfferAmount Decimal? @db.Decimal(10, 2) // si el seller contraoferta
+  acceptedPrice      Decimal? @db.Decimal(10, 2) // ✅ precio final acordado (clave)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relaciones (ajustá nombres/relations a tus modelos reales)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer   User    @relation("buyer_offers", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User    @relation("seller_offers", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([listingId, createdAt])
 }
 
 model Comment {
@@ -157,49 +167,48 @@ model Comment {
   content   String
   createdAt DateTime @default(now())
 
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
 
   listingId String
-  listing   Listing  @relation(fields: [listingId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
 }
 
 model CartItem {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   listingId String
-  listing   Listing  @relation(fields: [listingId], references: [id])
+  listing   Listing @relation(fields: [listingId], references: [id])
 
   @@unique([userId, listingId])
 }
 
 model Order {
   id          String      @id @default(cuid())
-  totalAmount Decimal     @db.Decimal(10,2)
+  totalAmount Decimal     @db.Decimal(10, 2)
   status      OrderStatus @default(PENDING)
   createdAt   DateTime    @default(now())
 
-  buyerId     String
-  buyer       User        @relation(fields: [buyerId], references: [id])
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id])
 
-  items       OrderItem[]
+  items OrderItem[]
 }
 
 model OrderItem {
-  id         String   @id @default(cuid())
-  price      Decimal  @db.Decimal(10,2)
+  id    String  @id @default(cuid())
+  price Decimal @db.Decimal(10, 2)
 
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
-  listingId  String
-  listing    Listing  @relation(fields: [listingId], references: [id])
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
 }
-
 
 //
 // ENUMS DEL SISTEMA
@@ -359,10 +368,12 @@ enum AccessorySize {
 
 enum OfferStatus {
   PENDING
+  COUNTERED
   ACCEPTED
   REJECTED
-  COUNTERED
+  EXPIRED
 }
+
 enum OrderStatus {
   PENDING
   PAID
@@ -375,23 +386,23 @@ enum OrderStatus {
 // NOTIFICATIONS
 //
 model Notification {
-  id          String   @id @default(cuid())
-  userId      String
+  id     String @id @default(cuid())
+  userId String
 
-  type        String
-  title       String
-  message     String
-  metadata    Json?
+  type     String
+  title    String
+  message  String
+  metadata Json?
 
-  read        Boolean  @default(false)
+  read Boolean @default(false)
 
   // Future delivery channels
-  sendEmail   Boolean  @default(false)
-  sendPush    Boolean  @default(false)
-  emailedAt   DateTime?
-  pushedAt    DateTime?
+  sendEmail Boolean   @default(false)
+  sendPush  Boolean   @default(false)
+  emailedAt DateTime?
+  pushedAt  DateTime?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -399,16 +410,16 @@ model Notification {
 }
 
 model NotificationPreference {
-  id        String @id @default(cuid())
-  userId    String @unique
+  id     String @id @default(cuid())
+  userId String @unique
 
-  emailSales        Boolean @default(true)
-  emailPurchases    Boolean @default(true)
-  emailFavorites    Boolean @default(false)
+  emailSales     Boolean @default(true)
+  emailPurchases Boolean @default(true)
+  emailFavorites Boolean @default(false)
 
-  pushSales         Boolean @default(true)
-  pushPurchases     Boolean @default(true)
-  pushFavorites     Boolean @default(true)
+  pushSales     Boolean @default(true)
+  pushPurchases Boolean @default(true)
+  pushFavorites Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
