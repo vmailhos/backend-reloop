@@ -302,29 +302,44 @@ router.get("/all", optionalAuth, validate(listQuerySchema), async (req, res, nex
 // GET /listings/mine
 router.get("/mine", requireAuth, async (req, res, next) => {
   try {
-    const items = await prisma.listing.findMany({
-      where: { sellerId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      include: {
-        photos: true,
-        seller: { select: { id: true, username: true, country: true, avatar: true } },
-      },
-    });
-    
-    // Explicitly enrich each listing with discount data
-    const enrichedItems = items.map((item) => {
-      const normalized = normalizeListing(req, toNumberPrice(item));
-      return enrichListingWithDiscount(normalized);
-    });
-    
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 20;
+
+    const safePage = page > 0 ? page : 1;
+    const safePageSize = pageSize > 0 && pageSize <= 100 ? pageSize : 20;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    const where = { sellerId: req.user.id };
+
+    const [items, total] = await Promise.all([
+      prisma.listing.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          photos: true,
+          seller: {
+            select: { id: true, username: true, country: true, avatar: true },
+          },
+        },
+      }),
+      prisma.listing.count({ where }),
+    ]);
+
     res.json({
-      items: enrichedItems,
-      total: items.length,
+      items: items.map((item) => enrichListing(req, item)),
+      total,
+      page: safePage,
+      pageSize: safePageSize,
     });
   } catch (e) {
     next(e);
   }
 });
+
 
 // POST /listings/create
 router.post("/create", requireAuth, validate(createListingSchema), async (req, res, next) => {

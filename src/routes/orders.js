@@ -166,83 +166,149 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
 });
 
 // GET /orders/sales → ventas del usuario (orders donde es vendedor)
+// GET /orders/sales → ventas del usuario (paginado)
 router.get("/sales", requireAuth, async (req, res, next) => {
   try {
-    const sales = await prisma.order.findMany({
-      where: {
-        items: {
-          some: {
-            listing: {
-              sellerId: req.user.id,
-            },
+    // 1️⃣ Leer query params
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 16;
+
+    const safePage = page > 0 ? page : 1;
+    const safePageSize =
+      pageSize > 0 && pageSize <= 100 ? pageSize : 16;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    // 2️⃣ Where base (ventas donde el usuario es vendedor)
+    const where = {
+      items: {
+        some: {
+          listing: {
+            sellerId: req.user.id,
           },
         },
       },
-      orderBy: { createdAt: "desc" },
-      include: {
-        buyer: {
-          select: { username: true },
-        },
-        items: {
-          where: {
-            listing: {
-              sellerId: req.user.id,
-            },
+    };
+
+    // 3️⃣ Query paginada + count total
+    const [sales, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          buyer: {
+            select: { username: true },
           },
-          include: {
-            listing: {
-              include: {
-                photos: { take: 1 },
+          items: {
+            where: {
+              listing: {
+                sellerId: req.user.id,
+              },
+            },
+            include: {
+              listing: {
+                include: {
+                  photos: { take: 1 },
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.order.count({ where }),
+    ]);
 
-    // Normalize photos in listings
+    // 4️⃣ Normalizar listings
     const normalized = sales.map((order) => ({
       ...order,
       items: order.items.map((item) =>
-        item.listing ? { ...item, listing: normalizeListing(req, item.listing) } : item
+        item.listing
+          ? { ...item, listing: normalizeListing(req, item.listing) }
+          : item
       ),
     }));
 
-    res.json(normalized);
+    // 5️⃣ Respuesta estándar
+    res.json({
+      items: normalized,
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+    });
   } catch (e) {
     next(e);
   }
 });
 
+
 // GET /orders → compras del usuario
+// GET /orders → compras del usuario (paginado)
 router.get("/", requireAuth, async (req, res, next) => {
   try {
-    const orders = await prisma.order.findMany({
-      where: { buyerId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      include: {
-        items: {
-          include: {
-            listing: {
-              include: { photos: { take: 1 }, seller: { select: { username: true } } },
+    // 1️⃣ Leer query params
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 16;
+
+    const safePage = page > 0 ? page : 1;
+    const safePageSize =
+      pageSize > 0 && pageSize <= 100 ? pageSize : 16;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    // 2️⃣ Where base (compras del usuario)
+    const where = {
+      buyerId: req.user.id,
+    };
+
+    // 3️⃣ Query paginada + count total
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          items: {
+            include: {
+              listing: {
+                include: {
+                  photos: { take: 1 },
+                  seller: { select: { username: true } },
+                },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      prisma.order.count({ where }),
+    ]);
 
+    // 4️⃣ Normalizar listings (photos absolutas, etc.)
     const normalized = orders.map((order) => ({
       ...order,
       items: order.items.map((item) =>
-        item.listing ? { ...item, listing: normalizeListing(req, item.listing) } : item
+        item.listing
+          ? { ...item, listing: normalizeListing(req, item.listing) }
+          : item
       ),
     }));
 
-    res.json(normalized);
+    // 5️⃣ Respuesta estándar (igual a listings)
+    res.json({
+      items: normalized,
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+    });
   } catch (e) {
     next(e);
   }
 });
+
 
 // GET /orders/:id → detalle completo de una compra
 router.get("/:id", requireAuth, async (req, res, next) => {

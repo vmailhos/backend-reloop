@@ -96,48 +96,136 @@ router.post(
 );
 
 // GET /offers/mine → Ofertas que YO hice
+// GET /offers/mine → Ofertas que hice como comprador (paginado)
 router.get("/mine", requireAuth, async (req, res, next) => {
   try {
-    const offers = await prisma.offer.findMany({
-      where: { buyerId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      include: {
-        listing: { include: { photos: { take: 1 } } },
-        seller: { select: { id: true, username: true, avatar: true } },
-      },
-    });
+    // 1️⃣ Leer query params (igual que orders / listings)
+    const page = Number(req.query.page ?? 1);
+    const pageSize = Number(req.query.pageSize ?? 20);
 
+    const safePage = page > 0 ? page : 1;
+    const safePageSize =
+      pageSize > 0 && pageSize <= 100 ? pageSize : 20;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    // 2️⃣ Where base: ofertas donde yo soy el comprador
+    const where = {
+      buyerId: req.user.id,
+    };
+
+    // 3️⃣ Query paginada + total
+    const [offers, total] = await Promise.all([
+      prisma.offer.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          listing: {
+            include: {
+              photos: { take: 1 },
+              seller: {
+                select: {
+                  id: true,
+                  username: true,
+                  avatar: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.offer.count({ where }),
+    ]);
+
+    // 4️⃣ Normalizar listing (URLs absolutas, etc.)
     const normalized = offers.map((offer) => ({
       ...offer,
-      listing: offer.listing ? normalizeListing(req, offer.listing) : offer.listing,
+      listing: offer.listing
+        ? normalizeListing(req, offer.listing)
+        : offer.listing,
     }));
-    res.json(normalized);
+
+    // 5️⃣ Respuesta estándar (igual que orders / listings)
+    res.json({
+      items: normalized,
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+    });
   } catch (e) {
     next(e);
   }
 });
+
 
 // GET /offers/received → Ofertas que me mandaron a mis publicaciones
+// GET /offers/received → Ofertas que me hicieron (paginado)
 router.get("/received", requireAuth, async (req, res, next) => {
   try {
-    const offers = await prisma.offer.findMany({
-      where: { sellerId: req.user.id },
-      orderBy: { createdAt: "desc" },
-      include: {
-        listing: { include: { photos: { take: 1 } } },
-        buyer: { select: { id: true, username: true, avatar: true } },
-      },
-    });
+    // 1️⃣ Leer query params (igual que orders / listings)
+    const page = Number(req.query.page ?? 1);
+    const pageSize = Number(req.query.pageSize ?? 20);
 
+    const safePage = page > 0 ? page : 1;
+    const safePageSize =
+      pageSize > 0 && pageSize <= 100 ? pageSize : 20;
+
+    const skip = (safePage - 1) * safePageSize;
+    const take = safePageSize;
+
+    // 2️⃣ Where base: ofertas donde yo soy el vendedor
+    const where = {
+      sellerId: req.user.id,
+    };
+
+    // 3️⃣ Query paginada + total
+    const [offers, total] = await Promise.all([
+      prisma.offer.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: {
+          listing: {
+            include: {
+              photos: { take: 1 },
+            },
+          },
+          buyer: {
+            select: {
+              id: true,
+              username: true,
+              avatar: true,
+            },
+          },
+        },
+      }),
+      prisma.offer.count({ where }),
+    ]);
+
+    // 4️⃣ Normalizar listing (URLs de imágenes, etc.)
     const normalized = offers.map((offer) => ({
       ...offer,
-      listing: offer.listing ? normalizeListing(req, offer.listing) : offer.listing,
+      listing: offer.listing
+        ? normalizeListing(req, offer.listing)
+        : offer.listing,
     }));
-    res.json(normalized);
+
+    // 5️⃣ Respuesta estándar (igual que orders / listings)
+    res.json({
+      items: normalized,
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+    });
   } catch (e) {
     next(e);
   }
 });
+
 
 // PATCH /offers/respond/:offerId → Aceptar, rechazar o contraofertar
 router.patch(

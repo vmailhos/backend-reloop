@@ -53,16 +53,26 @@ router.get("/", requireAuth, validate(listQuerySchema), async (req, res, next) =
       .filter((f) => f.listing)
       .map((f) => {
         const L = toNumberPrice(f.listing);
-        return {
-          id: L.id,
-          title: L.title,
-          price: L.price,
-          brand: L.brand,
-          condition: L.condition,
-          photo: toPublicPhotoUrl(req, L.photos[0]?.url) || null,
-          seller: L.seller,
-          favoriteId: f.id,
-        };
+          return {
+            id: L.id,
+            title: L.title,
+            price: L.price,
+            brand: L.brand,
+            condition: L.condition,
+
+            // 👇 TALLES (CLAVE)
+            sizeTop: L.sizeTop,
+            sizeBottom: L.sizeBottom,
+            sizeShoe: L.sizeShoe,
+            sizeAccessory: L.sizeAccessory,
+            sizeKids: L.sizeKids,
+            sizeKidsShoe: L.sizeKidsShoe,
+
+            photo: toPublicPhotoUrl(req, L.photos[0]?.url) || null,
+            seller: L.seller,
+            favoriteId: f.id,
+          };
+
       });
 
     res.json({ items, total, page, pageSize });
