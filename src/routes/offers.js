@@ -5,6 +5,7 @@ const validate = require("../middlewares/validate");
 const { z } = require("zod");
 const { normalizeListing } = require("../utils/photoUrls");
 const { sendOfferEmailToSeller } = require("../email/sendOfferEmailToSeller");
+const { createNotification } = require("../services/notificationService");
 
 //
 // Schemas
@@ -70,23 +71,24 @@ router.post(
         },
       });
 
-      (async () => {
-        try {
-          if (!listing.seller?.email) return;
-          console.log("[MAIL] Intentando enviar mail de nueva oferta");
-          console.log("[MAIL] Destinatario:", listing.seller.email);
-          await sendOfferEmailToSeller({
-            email: listing.seller.email,
-            name: listing.seller.name || listing.seller.username,
-            title: listing.title,
-            amount,
-          });
-          console.log("[MAIL] Mail de nueva oferta enviado correctamente");
-        } catch (err) {
-          console.error("[MAIL] Error enviando mail de nueva oferta");
-          console.error(err);
-        }
-      })();
+      await createNotification({
+        userId: listing.sellerId,
+        type: "NEW_OFFER",
+        title: "Te han hecho una nueva oferta",
+        message: "Recibiste una nueva oferta por tu producto.",
+        metadata: { offerId: offer.id, listingId, buyerId: req.user.id },
+        preferenceKey: "emailSales",
+        emailHandler: listing.seller?.email
+          ? async () => {
+              await sendOfferEmailToSeller({
+                email: listing.seller.email,
+                name: listing.seller.name || listing.seller.username,
+                title: listing.title,
+                amount,
+              });
+            }
+          : null,
+      });
 
       res.status(201).json(offer);
     } catch (e) {
@@ -255,9 +257,26 @@ router.patch(
           },
       });
 
+      if (status === "ACCEPTED" || status === "REJECTED") {
+        const type = status === "ACCEPTED" ? "OFFER_ACCEPTED" : "OFFER_REJECTED";
+        const title =
+          status === "ACCEPTED" ? "Tu oferta fue aceptada" : "Tu oferta fue rechazada";
+        const message =
+          status === "ACCEPTED"
+            ? "El vendedor aceptó tu oferta."
+            : "El vendedor rechazó tu oferta.";
+
+        await createNotification({
+          userId: offer.buyerId,
+          type,
+          title,
+          message,
+          metadata: { offerId: offer.id, listingId: offer.listingId },
+          preferenceKey: "emailPurchases",
+        });
+      }
+
       res.json(updated);
-      if (status === "ACCEPTED") {
-}
 
     } catch (e) {
       next(e);

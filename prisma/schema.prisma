@@ -34,11 +34,13 @@ model User {
   ratingsReceived        Rating[]                @relation("ratings_received")
   offersSent             Offer[]                 @relation("buyer_offers")
   offersReceived         Offer[]                 @relation("seller_offers")
-  comments               Comment[]
+  buyerThreads  CommentThread[] @relation("buyer_threads")
+  sellerThreads CommentThread[] @relation("seller_threads")
   cart                   CartItem[]
   orders                 Order[]
   notifications          Notification[]
   notificationPreference NotificationPreference?
+  comments               Comment[]
 }
 
 //
@@ -73,12 +75,12 @@ model Listing {
 
   sellerId String
   seller   User   @relation(fields: [sellerId], references: [id])
+  commentThreads CommentThread[]
 
   photos     Photo[]
   favorites  Favorite[]
   ratings    Rating[]
   createdAt  DateTime    @default(now())
-  comments   Comment[]
   offers     Offer[]
   orderItems OrderItem[]
   cartItems  CartItem[]
@@ -162,17 +164,34 @@ model Offer {
   @@index([listingId, createdAt])
 }
 
+model CommentThread {
+  id        String   @id @default(cuid())
+  listingId String
+  buyerId   String
+  sellerId  String
+  createdAt DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer   User    @relation("buyer_threads", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller  User    @relation("seller_threads", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  comments Comment[]
+
+  @@unique([listingId, buyerId]) // 🔥 UN THREAD POR USUARIO
+}
+
 model Comment {
   id        String   @id @default(cuid())
   content   String
   createdAt DateTime @default(now())
 
-  authorId String
-  author   User   @relation(fields: [authorId], references: [id])
+  authorId  String
+  author    User   @relation(fields: [authorId], references: [id])
 
-  listingId String
-  listing   Listing @relation(fields: [listingId], references: [id])
+  threadId  String
+  thread    CommentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
+
 
 model CartItem {
   id        String   @id @default(cuid())
@@ -189,7 +208,10 @@ model CartItem {
 
 model Order {
   id          String      @id @default(cuid())
-  totalAmount Decimal     @db.Decimal(10, 2)
+  subtotal      Decimal @db.Decimal(10, 2)
+  commission    Decimal @db.Decimal(10, 2)
+  totalAmount   Decimal @db.Decimal(10, 2)
+  commissionPct Decimal @db.Decimal(5, 2) @default(3.0)
   status      OrderStatus @default(PENDING)
   createdAt   DateTime    @default(now())
 
@@ -197,6 +219,13 @@ model Order {
   buyer   User   @relation(fields: [buyerId], references: [id])
 
   items OrderItem[]
+
+  shippingProvider String?   // "DAC"
+  shippingType     String?   // "HOME" | "AGENCY"
+  shippingData     Json?     // snapshot completo
+  shippingTicketUrl String?
+  shippedAt        DateTime?
+  receivedAt       DateTime?
 }
 
 model OrderItem {
@@ -226,6 +255,7 @@ enum Category {
   HOMBRE
   MUJER
   NINOS
+  UNISEX
 }
 
 enum SubCategory {
@@ -249,6 +279,7 @@ enum SubSubCategory {
   Blazers
   Carteras
   Sombreros
+  Gorros
   Lentes
   Bijou
   Cinturones

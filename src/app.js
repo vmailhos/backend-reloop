@@ -65,6 +65,11 @@ app.use("/orders", require("./routes/orders"));
 app.use("/notifications", require("./routes/notifications"));
 app.use("/offers", require("./routes/offers"));
 app.use("/uploads", require("./routes/uploads"));
+app.use("/shipping", require("./routes/shipping"));
+app.use("/payments", require("./routes/payments"));
+if (process.env.NODE_ENV !== "test") {
+  app.use("/ai", require("./routes/ai"));
+}
 
 // Debug endpoints
 app.post("/_debug/body", (req, res) => {

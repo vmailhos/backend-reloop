@@ -4,20 +4,69 @@ const requireAuth = require("../middlewares/requireAuth");
 const { z } = require("zod");
 const validate = require("../middlewares/validate");
 const { normalizeListing } = require("../utils/photoUrls");
-const { createNotification } = require("../utils/notificationHelper");
+const { createNotification } = require("../services/notificationService");
 const { sendSaleEmailToSeller } = require("../email/sendSaleEmailToSeller");
 const { sendPurchaseEmailToBuyer } = require("../email/sendPurchaseEmailToBuyer");
+const { getDacAgencyById } = require("../utils/dacAgencies"); 
+// Ajustá path a tu estructura real
+
+const shippingSchema = z.object({
+  provider: z.literal("DAC"),
+  type: z.enum(["HOME", "AGENCY"]),
+  data: z.any(), // validamos abajo con superRefine
+});
 
 const createOrderSchema = {
   body: z.object({
     listingIds: z.array(z.string().min(1)).min(1),
+    shipping: shippingSchema,
+  }).superRefine((val, ctx) => {
+    const { type, data } = val.shipping;
+
+    if (type === "HOME") {
+      const homeSchema = z.object({
+        name: z.string().min(1),
+        lastName: z.string().min(1),
+        phone: z.string().min(6),
+        address: z.object({
+          street: z.string().min(1),
+          apartment: z.string().optional(),
+          department: z.string().min(1),
+          locality: z.string().min(1),
+        }),
+        observations: z.string().optional(),
+      });
+
+      const parsed = homeSchema.safeParse(data);
+      if (!parsed.success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid_shipping_home_data" });
+      }
+    }
+
+    if (type === "AGENCY") {
+      const agencySchema = z.object({
+        agencyId: z.string().min(1),
+        pickupPerson: z.object({
+          name: z.string().min(1),
+          lastName: z.string().min(1),
+          phone: z.string().min(6),
+        }),
+      });
+
+      const parsed = agencySchema.safeParse(data);
+      if (!parsed.success) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid_shipping_agency_data" });
+      }
+    }
   }),
 };
+
 
 // POST /orders → crear compra desde carrito o compra directa
 router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next) => {
   try {
-    const { listingIds } = req.body;
+    const { listingIds, shipping } = req.body;
+
     const uniqueListingIds = [...new Set(listingIds)];
 
     if (uniqueListingIds.length !== listingIds.length) {
@@ -40,7 +89,48 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
     const unavailable = listings.find((l) => l.status !== "available");
     if (unavailable) return res.status(409).json({ error: "listing_unavailable" });
 
-    const total = listings.reduce((acc, l) => acc + Number(l.price), 0);
+   const subtotal = listings.reduce(
+      (acc, l) => acc + Number(l.price),
+      0
+    );
+
+    const COMMISSION_PCT = 0.03;
+    const commission = Number((subtotal * COMMISSION_PCT).toFixed(2));
+    const totalAmount = Number((subtotal + commission).toFixed(2));
+
+
+    const firstSellerId = listings[0]?.sellerId;
+    const notSameSeller = listings.some(l => l.sellerId !== firstSellerId);
+    if (notSameSeller) return res.status(400).json({ error: "listings_not_same_seller" });
+
+    let shippingData = null;
+
+if (shipping.type === "HOME") {
+  const { name, lastName, phone, address, observations } = shipping.data;
+  shippingData = {
+    type: "HOME",
+    name,
+    lastName,
+    phone,
+    address,
+    observations: observations ?? null,
+  };
+}
+
+
+if (shipping.type === "AGENCY") {
+  const { agencyId, pickupPerson } = shipping.data;
+
+  const agency = getDacAgencyById(agencyId);
+  if (!agency) return res.status(400).json({ error: "invalid_agency" });
+
+  shippingData = {
+    type: "AGENCY",
+    agency,       // viene del backend hardcodeado
+    pickupPerson, // viene del frontend
+  };
+}
+
 
     const order = await prisma.$transaction(async (tx) => {
       const updated = await tx.listing.updateMany({
@@ -55,49 +145,34 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
       }
 
       const createdOrder = await tx.order.create({
-        data: {
-          buyerId: req.user.id,
-          totalAmount: total,
-          items: {
-            create: listings.map((l) => ({
-              listingId: l.id,
-              price: l.price,
-            })),
-          },
-        },
-        include: { items: true },
-      });
+  data: {
+    buyerId: req.user.id,
+
+    subtotal,
+    commission,
+    commissionPct: 3,
+    totalAmount,
+
+    status: "PAID",
+
+    shippingProvider: "DAC",
+    shippingType: shipping.type,
+    shippingData,
+
+    items: {
+      create: listings.map((l) => ({
+        listingId: l.id,
+        price: l.price, // precio real del producto
+      })),
+    },
+  },
+  include: { items: true },
+});
 
       await tx.cartItem.deleteMany({
         where: { listingId: { in: uniqueListingIds } },
       });
 
-      // Create notification for buyer
-      await createNotification(
-        tx,
-        req.user.id,
-        "purchase",
-        "Gracias por tu compra",
-        "Tu compra fue realizada con éxito",
-        { orderId: createdOrder.id }
-      );
-
-      // Create notifications for each seller
-      const sellerIds = [...new Set(listings.map((l) => l.sellerId))];
-      for (const sellerId of sellerIds) {
-        const sellerListings = listings.filter((l) => l.sellerId === sellerId);
-        for (const listing of sellerListings) {
-          await createNotification(
-            tx,
-            sellerId,
-            "sale",
-            "¡Felicitaciones por tu venta!",
-            "Vendiste un producto",
-            { orderId: createdOrder.id, listingId: listing.id }
-          );
-        }
-      }
-      
     await tx.offer.updateMany({
       where: {
         listingId: { in: uniqueListingIds },
@@ -112,51 +187,76 @@ router.post("/", requireAuth, validate(createOrderSchema), async (req, res, next
       return createdOrder;
     });
 
-    (async () => {
-      try {
-        console.log("[MAIL] Intentando enviar mails de compra y venta");
-
+    await createNotification({
+      userId: req.user.id,
+      type: "PURCHASE_CONFIRMED",
+      title: "Compra realizada con éxito",
+      message: "Tu pedido fue confirmado correctamente.",
+      metadata: { orderId: order.id },
+      preferenceKey: "emailPurchases",
+      emailHandler: async () => {
         const buyerName = req.user.name || req.user.username;
         for (const listing of listings) {
-          console.log("[MAIL] Destinatario compra:", req.user.email);
           await sendPurchaseEmailToBuyer({
             email: req.user.email,
             name: buyerName,
             title: listing.title,
           });
-          console.log("[MAIL] Mail de compra enviado correctamente");
         }
-
-        for (const listing of listings) {
-          const seller = listing.seller;
-          if (!seller?.email) continue;
-          console.log("[MAIL] Destinatario venta:", seller.email);
-          await sendSaleEmailToSeller({
-            email: seller.email,
-            name: seller.name || seller.username,
-            title: listing.title,
-          });
-          console.log("[MAIL] Mail de venta enviado correctamente");
-        }
-
-        console.log("[MAIL] Proceso de mails de compra y venta finalizado");
-      } catch (err) {
-        console.error("[MAIL] Error enviando mails de compra/venta");
-        console.error(err);
-      }
-    })();
-
-    res.status(201).json({
-      order: {
-        id: order.id,
-        totalAmount: order.totalAmount,
-        createdAt: order.createdAt,
-        items: order.items.map((item) => ({
-          listingId: item.listingId,
-          price: item.price,
-        })),
       },
     });
+
+    const sellerIds = [...new Set(listings.map((l) => l.sellerId))];
+    for (const sellerId of sellerIds) {
+      const sellerListings = listings.filter((l) => l.sellerId === sellerId);
+      for (const listing of sellerListings) {
+        const seller = listing.seller;
+        await createNotification({
+          userId: sellerId,
+          type: "NEW_SALE",
+          title: "Tienes una nueva venta",
+          message: "Tu producto fue vendido.",
+          metadata: { orderId: order.id, listingId: listing.id },
+          preferenceKey: "emailSales",
+          emailHandler: seller?.email
+            ? async () => {
+                await sendSaleEmailToSeller({
+                  email: seller.email,
+                  name: seller.name || seller.username,
+                  title: listing.title,
+                });
+              }
+            : null,
+        });
+      }
+    }
+
+res.status(201).json({
+  order: {
+    id: order.id,
+
+    subtotal: order.subtotal,
+    commission: order.commission,
+    commissionPct: order.commissionPct,
+    totalAmount: order.totalAmount,
+
+    createdAt: order.createdAt,
+    status: order.status,
+
+    shipping: {
+      provider: order.shippingProvider,
+      type: order.shippingType,
+      data: order.shippingData,
+    },
+
+    items: order.items.map((item) => ({
+      listingId: item.listingId,
+      price: item.price,
+    })),
+  },
+});
+
+
   } catch (e) {
     if (e?.status) {
       return res.status(e.status).json({ error: e.message });
@@ -193,43 +293,57 @@ router.get("/sales", requireAuth, async (req, res, next) => {
 
     // 3️⃣ Query paginada + count total
     const [sales, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-        include: {
-          buyer: {
-            select: { username: true },
-          },
-          items: {
-            where: {
-              listing: {
-                sellerId: req.user.id,
-              },
-            },
-            include: {
-              listing: {
-                include: {
-                  photos: { take: 1 },
-                },
-              },
+  prisma.order.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip,
+    take,
+    select: {
+      id: true,
+      createdAt: true,
+      status: true,
+      totalAmount: true,
+
+      // ✅ SHIPPING
+      shippingProvider: true,
+      shippingType: true,
+      shippingData: true,
+
+      buyer: { select: { username: true } },
+
+      items: {
+        where: {
+          listing: { sellerId: req.user.id },
+        },
+        select: {
+          id: true,
+          price: true,
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              photos: { take: 1 },
             },
           },
         },
-      }),
-      prisma.order.count({ where }),
-    ]);
+      },
+    },
+  }),
+  prisma.order.count({ where }),
+]);
 
-    // 4️⃣ Normalizar listings
+
     const normalized = sales.map((order) => ({
-      ...order,
-      items: order.items.map((item) =>
-        item.listing
-          ? { ...item, listing: normalizeListing(req, item.listing) }
-          : item
-      ),
-    }));
+  ...order,
+  shipping: order.shippingType
+    ? {
+        provider: order.shippingProvider,
+        type: order.shippingType,
+        data: order.shippingData,
+      }
+    : null,
+}));
+
 
     // 5️⃣ Respuesta estándar
     res.json({
@@ -266,44 +380,63 @@ router.get("/", requireAuth, async (req, res, next) => {
 
     // 3️⃣ Query paginada + count total
     const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-        include: {
-          items: {
-            include: {
-              listing: {
-                include: {
-                  photos: { take: 1 },
-                  seller: { select: { username: true } },
-                },
-              },
+  prisma.order.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip,
+    take,
+    select: {
+      id: true,
+      createdAt: true,
+      status: true,
+      subtotal: true,
+      commission: true,
+      commissionPct: true,
+      totalAmount: true,
+
+      // ✅ SHIPPING (CLAVE)
+      shippingProvider: true,
+      shippingType: true,
+      shippingData: true,
+
+      items: {
+        select: {
+          id: true,
+          price: true,
+          listing: {
+            select: {
+              id: true,
+              title: true,
+              photos: { take: 1 },
+              seller: { select: { username: true } },
             },
           },
         },
-      }),
-      prisma.order.count({ where }),
-    ]);
+      },
+    },
+  }),
+  prisma.order.count({ where }),
+]);
 
-    // 4️⃣ Normalizar listings (photos absolutas, etc.)
-    const normalized = orders.map((order) => ({
-      ...order,
-      items: order.items.map((item) =>
-        item.listing
-          ? { ...item, listing: normalizeListing(req, item.listing) }
-          : item
-      ),
-    }));
+const normalized = orders.map((order) => ({
+  ...order,
+  shipping: order.shippingType
+    ? {
+        provider: order.shippingProvider,
+        type: order.shippingType,
+        data: order.shippingData,
+      }
+    : null,
+}));
 
     // 5️⃣ Respuesta estándar (igual a listings)
-    res.json({
-      items: normalized,
-      total,
-      page: safePage,
-      pageSize: safePageSize,
-    });
+res.json({
+  items: normalized,
+  total,
+  page: safePage,
+  pageSize: safePageSize,
+});
+
   } catch (e) {
     next(e);
   }
@@ -338,14 +471,22 @@ router.get("/:id", requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: "order_not_found" });
     }
 
-    const normalizedOrder = {
-      ...order,
-      items: order.items.map((item) =>
-        item.listing
-          ? { ...item, listing: normalizeListing(req, item.listing) }
-          : item
-      ),
-    };
+const normalizedOrder = {
+  ...order,
+  shipping: order.shippingType
+    ? {
+        provider: order.shippingProvider,
+        type: order.shippingType,
+        data: order.shippingData,
+      }
+    : null,
+  items: order.items.map((item) =>
+    item.listing
+      ? { ...item, listing: normalizeListing(req, item.listing) }
+      : item
+  ),
+};
+
 
     res.json(normalizedOrder);
   } catch (e) {
@@ -396,6 +537,13 @@ router.get("/sales/:id", requireAuth, async (req, res, next) => {
 
     const normalized = {
       ...order,
+      shipping: order.shippingType
+        ? {
+            provider: order.shippingProvider,
+            type: order.shippingType,
+            data: order.shippingData,
+          }
+        : null,
       items: order.items.map((item) =>
         item.listing
           ? { ...item, listing: normalizeListing(req, item.listing) }
@@ -404,6 +552,118 @@ router.get("/sales/:id", requireAuth, async (req, res, next) => {
     };
 
     res.json(normalized);
+  } catch (e) {
+    next(e);
+  }
+});
+// POST /orders/:id/mark-received
+router.post("/:id/mark-received", requireAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.order.findFirst({
+      where: {
+        id,
+        buyerId: req.user.id,
+        status: "SHIPPED",
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "order_not_found_or_not_allowed" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id },
+      data: {
+        status: "COMPLETED",
+        receivedAt: new Date(),
+      },
+    });
+
+    // 🔔 Notificación al vendedor
+    const sellerId = await prisma.orderItem.findFirst({
+      where: { orderId: id },
+      select: { listing: { select: { sellerId: true } } },
+    });
+
+    if (sellerId?.listing?.sellerId) {
+      await createNotification({
+        userId: sellerId.listing.sellerId,
+        type: "ORDER_RECEIVED",
+        title: "El comprador confirmó la recepción",
+        message: "El comprador confirmó la recepción de tu venta.",
+        metadata: { orderId: id },
+        preferenceKey: "emailSales",
+      });
+    }
+
+    res.json({ success: true, order: updated });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /orders/:id/mark-shipped
+router.post("/:id/mark-shipped", requireAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { ticketUrl } = req.body;
+
+    if (!ticketUrl) {
+      return res.status(400).json({ error: "ticket_required" });
+    }
+
+    // Buscar orden donde el user sea vendedor
+    const order = await prisma.order.findFirst({
+      where: {
+        id,
+        status: "PAID",
+        items: {
+          some: {
+            listing: {
+              sellerId: req.user.id,
+            },
+          },
+        },
+      },
+      include: {
+        buyer: { select: { id: true, email: true, name: true, username: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "order_not_found_or_not_allowed" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id },
+      data: {
+        status: "SHIPPED",
+        shippingTicketUrl: ticketUrl,
+        shippedAt: new Date(),
+      },
+    });
+
+    // 🔔 Notificación al comprador
+    await createNotification({
+      userId: order.buyer.id,
+      type: "ORDER_SHIPPED",
+      title: "Tu pedido fue enviado",
+      message: "El vendedor ya despachó tu compra.",
+      metadata: { orderId: order.id },
+      preferenceKey: "emailPurchases",
+      emailHandler: async () => {
+        await sendPurchaseEmailToBuyer({
+          email: order.buyer.email,
+          name: order.buyer.name || order.buyer.username,
+          title: "Tu pedido fue enviado",
+          ticketUrl,
+        });
+      },
+    });
+
+    res.json({ success: true, order: updated });
   } catch (e) {
     next(e);
   }

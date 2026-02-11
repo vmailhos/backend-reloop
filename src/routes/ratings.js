@@ -4,6 +4,7 @@ const { prisma } = require("../db");
 const requireAuth = require("../middlewares/requireAuth");
 const validate = require("../middlewares/validate");
 const { createRatingSchema } = require("../schemas/ratingSchemas");
+const { createNotification } = require("../services/notificationService");
 
 // --------------------------------------------------
 // POST /ratings → Crear una calificación
@@ -30,6 +31,33 @@ router.post(
       if (!targetUser) {
         return res.status(404).json({ error: "El usuario que intentas calificar no existe." });
       }
+      const existing = await prisma.rating.findFirst({
+          where: {
+            authorId: req.user.id,
+            targetId,
+            listingId: listingId ?? undefined,
+          },
+        });
+
+        if (existing) {
+          return res.status(409).json({ error: "rating_already_exists" });
+        }
+        if (listingId) {
+          const hasOrder = await prisma.order.findFirst({
+            where: {
+              buyerId: req.user.id,
+              status: "COMPLETED",
+              items: {
+                some: { listingId },
+              },
+            },
+          });
+
+          if (!hasOrder) {
+            return res.status(403).json({ error: "rating_not_allowed" });
+          }
+        }
+
 
       const rating = await prisma.rating.create({
         data: {
@@ -39,6 +67,15 @@ router.post(
           targetId,
           listingId,
         },
+      });
+
+      await createNotification({
+        userId: targetId,
+        type: "NEW_RATING",
+        title: "Has recibido una nueva valoración",
+        message: "Recibiste una nueva valoración.",
+        metadata: { ratingId: rating.id, listingId },
+        preferenceKey: "emailSales",
       });
 
       return res.json(rating);
