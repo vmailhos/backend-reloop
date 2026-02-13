@@ -61,7 +61,6 @@ router.post(
 
       // ⚠️ URLs: en dev usá ngrok para que MP pueda redirigir
       const FRONT_URL = "https://reloop-uy.com"; // ej: https://xxxx.ngrok-free.app
-      console.log(back_urls);
       const back_urls = {
         success: `${FRONT_URL}/orders/success`,
         failure: `${FRONT_URL}/orders/failure`,
