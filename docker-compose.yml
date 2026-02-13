@@ -26,7 +26,7 @@ services:
       DATABASE_URL: DATABASE_URL=postgresql://reloop:basededatos@reloop-bd.c32ieac4emix.us-east-2.rds.amazonaws.com:5432/postgres?schema=public
       NODE_ENV: development
     ports:
-      - "80:3000"
+      - "3000:3000"
       - "5555:5555"
     volumes:
       - uploads_data:/app/uploads
