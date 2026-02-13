@@ -1,46 +1,25 @@
 services:
-  db:
-    image: postgres:15
-    container_name: reloop-db
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: reloop
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d reloop"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: reloop-api
-    # Usa tus variables de .env y sobreescribe solo la DATABASE_URL para hablar con "db"
     env_file: .env
     environment:
-      DATABASE_URL: DATABASE_URL=postgresql://reloop:basededatos@reloop-bd.c32ieac4emix.us-east-2.rds.amazonaws.com:5432/postgres?schema=public
-      NODE_ENV: development
+      DATABASE_URL: "postgresql://reloop:basededatos@reloop-bd.c32ieac4emix.us-east-2.rds.amazonaws.com:5432/postgres?schema=public"
+      NODE_ENV: production
     ports:
       - "3000:3000"
       - "5555:5555"
     volumes:
       - uploads_data:/app/uploads
-    depends_on:
-      db:
-        condition: service_healthy
+    restart: unless-stopped
     command: >
       sh -c "
       npx prisma generate &&
       npx prisma migrate deploy &&
       exec node src/server.js
       "
-      
+
 volumes:
-  pgdata:
-  node_modules:
   uploads_data:
