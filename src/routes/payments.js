@@ -60,11 +60,11 @@ router.post(
       const externalReference = crypto.randomUUID();
 
       // ⚠️ URLs: en dev usá ngrok para que MP pueda redirigir
-      const FRONT_URL = process.env.FRONT_URL; // ej: https://xxxx.ngrok-free.app
+      const FRONT_URL = "https://reloop-uy.com"; // ej: https://xxxx.ngrok-free.app
       const back_urls = {
-        success: `${FRONT_URL}/order-success?ref=${externalReference}`,
-        failure: `${FRONT_URL}/order-failure?ref=${externalReference}`,
-        pending: `${FRONT_URL}/order-pending?ref=${externalReference}`,
+        success: `${FRONT_URL}/orders/success`,
+        failure: `${FRONT_URL}/orders/failure`,
+        pending: `${FRONT_URL}/orders/success?status=pending`,
       };
 
       const preferenceBody = {
