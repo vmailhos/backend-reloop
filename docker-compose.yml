@@ -23,7 +23,7 @@ services:
     # Usa tus variables de .env y sobreescribe solo la DATABASE_URL para hablar con "db"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/reloop?schema=public
+      DATABASE_URL: DATABASE_URL=postgresql://reloop:basededatos@reloop-bd.c32ieac4emix.us-east-2.rds.amazonaws.com:5432/postgres?schema=public
       NODE_ENV: development
     ports:
       - "80:3000"
