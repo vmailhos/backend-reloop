@@ -114,14 +114,21 @@ router.post(
   requireAuth,
   async (req, res, next) => {
     try {
-      const { payment_id, external_reference } = req.body;
+      const {
+        payment_id,
+        merchant_order_id,
+        external_reference,
+        collection_id
+      } = req.body;
 
-      if (!payment_id) {
+      const finalPaymentId = payment_id || collection_id;
+
+      if (!finalPaymentId) {
         return res.status(400).json({ error: "payment_id_required" });
       }
 
-      // 1️⃣ Buscar pago en Mercado Pago
-      const mpPayment = await paymentClient.get({ id: payment_id });
+      const mpPayment = await paymentClient.get({ id: finalPaymentId });
+
 
       if (mpPayment.status !== "approved") {
         return res.status(400).json({ error: "payment_not_approved" });
