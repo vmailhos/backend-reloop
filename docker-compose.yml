@@ -26,7 +26,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/reloop?schema=public
       NODE_ENV: development
     ports:
-      - "3000:3000"
+      - "3001:3000"
       - "5555:5555"
     volumes:
       - uploads_data:/app/uploads
