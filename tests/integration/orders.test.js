@@ -1,20 +1,20 @@
-jest.mock("../src/email/sendSaleEmailToSeller", () => ({
+jest.mock("../../src/email/sendSaleEmailToSeller", () => ({
   sendSaleEmailToSeller: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock("../src/email/sendPurchaseEmailToBuyer", () => ({
+jest.mock("../../src/email/sendPurchaseEmailToBuyer", () => ({
   sendPurchaseEmailToBuyer: jest.fn().mockResolvedValue(undefined),
 }));
 
 const request = require("supertest");
-const app = require("../src/app");
+const app = require("../../src/app");
 const {
   prisma,
   makeAuthHeader,
   resetDatabase,
   createUser,
   createListing,
-} = require("./testUtils");
+} = require("../testUtils");
 
 describe("Orders integration", () => {
   beforeEach(async () => {

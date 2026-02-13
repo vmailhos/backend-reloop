@@ -1,16 +1,16 @@
-jest.mock("../src/email/sendCommentEmailToSeller", () => ({
+jest.mock("../../src/email/sendCommentEmailToSeller", () => ({
   sendCommentEmailToSeller: jest.fn().mockResolvedValue(undefined),
 }));
 
 const request = require("supertest");
-const app = require("../src/app");
+const app = require("../../src/app");
 const {
   prisma,
   makeAuthHeader,
   resetDatabase,
   createUser,
   createListing,
-} = require("./testUtils");
+} = require("../testUtils");
 
 describe("Comments integration", () => {
   beforeEach(async () => {

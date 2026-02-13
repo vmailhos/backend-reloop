@@ -1,12 +1,12 @@
 const request = require("supertest");
-const app = require("../src/app");
+const app = require("../../src/app");
 const {
   prisma,
   makeAuthHeader,
   resetDatabase,
   createUser,
   createListing,
-} = require("./testUtils");
+} = require("../testUtils");
 
 describe("Favorites integration", () => {
   beforeEach(async () => {

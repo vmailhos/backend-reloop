@@ -1,11 +1,11 @@
 const request = require("supertest");
-const app = require("../src/app");
+const app = require("../../src/app");
 const {
   prisma,
   makeAuthHeader,
   resetDatabase,
   createUser,
-} = require("./testUtils");
+} = require("../testUtils");
 
 describe("Ratings integration", () => {
   beforeEach(async () => {
