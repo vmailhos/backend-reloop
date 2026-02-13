@@ -50,7 +50,7 @@ jobs:
             "sudo docker ps --format \"table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\"",
             "sudo docker logs --tail=40 reloop-api || true"
             ]
-            }' \
+            ]' \
             --query "Command.CommandId" \
             --output text)
           
