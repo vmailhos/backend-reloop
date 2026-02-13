@@ -21,18 +21,22 @@ jobs:
           aws-region: us-east-2
 
       - name: Deploy via SSM
-        run: |
+       run: |
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy backend-reloop from GitHub Actions" \
             --parameters commands='[
-              "set -e",
-              "cd /home/ssm-user",
-              "chmod +x deploy_backend_reloop.sh || true",
-              "./deploy_backend_reloop.sh"
+              "set -euo pipefail",
+              "cd /home/ssm-user/backend-reloop",
+              "git fetch origin",
+              "git reset --hard origin/main",
+              "sudo docker compose down --remove-orphans || true",
+              "sudo docker compose up -d --build",
+              "sudo docker compose ps"
             ]' \
             --output text
+
 
       - name: Show command result
         run: |
