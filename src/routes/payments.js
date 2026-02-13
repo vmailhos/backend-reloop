@@ -134,50 +134,76 @@ router.post(
         return res.status(400).json({ error: "payment_not_approved" });
       }
 
-      const metadata = mpPayment.metadata;
-      const listingIds = metadata?.listingIds || [];
-      const shipping = metadata?.shipping;
+      console.log("MP PAYMENT FULL:", JSON.stringify(mpPayment, null, 2));
 
-      if (!listingIds.length) {
-        return res.status(400).json({ error: "missing_metadata" });
-      }
+      // Mercado Pago devuelve metadata dentro del payment
+const metadata = mpPayment.metadata || {};
 
-      // 2️⃣ Crear orden usando tu lógica existente
-      const listings = await prisma.listing.findMany({
-        where: { id: { in: listingIds } },
-      });
+const listingIds = metadata.listingIds || [];
+const shipping = metadata.shipping || null;
 
-      const subtotal = listings.reduce(
-        (acc, l) => acc + Number(l.price),
-        0
-      );
+if (!listingIds.length) {
+  return res.status(400).json({ error: "missing_listing_ids" });
+}
 
-      const commission = Number((subtotal * 0.03).toFixed(2));
-      const totalAmount = Number((subtotal + commission).toFixed(2));
+// 🔹 Traer listings reales desde DB
+const listings = await prisma.listing.findMany({
+  where: { id: { in: listingIds } },
+});
 
-      const order = await prisma.order.create({
-        data: {
-          buyerId: req.user.id,
-          subtotal,
-          commission,
-          commissionPct: 3,
-          totalAmount,
-          status: "PAID",
-          shippingProvider: "DAC",
-          shippingType: shipping?.type,
-          shippingData: shipping?.data,
-          items: {
-            create: listings.map((l) => ({
-              listingId: l.id,
-              price: l.price,
-            })),
-          },
-        },
-        include: { items: true },
-      });
+if (listings.length !== listingIds.length) {
+  return res.status(400).json({ error: "invalid_listing_ids" });
+}
+
+// Validar que sigan disponibles
+const unavailable = listings.find(l => l.status !== "available");
+if (unavailable) {
+  return res.status(409).json({ error: "listing_unavailable" });
+}
+
+// 🔹 Calcular montos
+const subtotal = listings.reduce(
+  (acc, l) => acc + Number(l.price),
+  0
+);
+
+const commission = Number((subtotal * 0.03).toFixed(2));
+const totalAmount = Number((subtotal + commission).toFixed(2));
+
+// 🔹 Crear orden
+const order = await prisma.$transaction(async (tx) => {
+
+  // marcar listings como vendidas
+  await tx.listing.updateMany({
+    where: { id: { in: listingIds }, status: "available" },
+    data: { status: "sold" },
+  });
+
+  const createdOrder = await tx.order.create({
+    data: {
+      buyerId: req.user.id,
+      subtotal,
+      commission,
+      commissionPct: 3,
+      totalAmount,
+      status: "PAID",
+      shippingProvider: "DAC",
+      shippingType: shipping?.type,
+      shippingData: shipping?.data,
+      items: {
+        create: listings.map((l) => ({
+          listingId: l.id,
+          price: l.price,
+        })),
+      },
+    },
+    include: { items: true },
+  });
+
+  return createdOrder;
+});
 
       return res.json({ order });
-
     } catch (e) {
       next(e);
     }
