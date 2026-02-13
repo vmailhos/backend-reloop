@@ -137,10 +137,15 @@ router.post(
       console.log("MP PAYMENT FULL:", JSON.stringify(mpPayment, null, 2));
 
       // Mercado Pago devuelve metadata dentro del payment
-const metadata = mpPayment.metadata || {};
+      const metadata = mpPayment.metadata || {};
 
-const listingIds = metadata.listingIds || [];
-const shipping = metadata.shipping || null;
+      const listingIds =
+        metadata.listingIds ||
+        metadata.listing_ids ||
+        [];
+
+      const shipping = metadata.shipping || null;
+
 
 if (!listingIds.length) {
   return res.status(400).json({ error: "missing_listing_ids" });
