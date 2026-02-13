@@ -62,7 +62,12 @@ jobs:
             --command-id "${{ steps.ssm.outputs.command_id }}" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
           aws ssm list-command-invocations \
-            --details \
             --command-id "${{ steps.ssm.outputs.command_id }}" \
             --details \
             --output table
+
+          aws ssm get-command-invocation \
+            --command-id "${{ steps.ssm.outputs.command_id }}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query '{Status:Status,StatusDetails:StatusDetails,ResponseCode:ResponseCode,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' \
+            --output json
