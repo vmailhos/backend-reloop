@@ -9,7 +9,7 @@ function requireEnv(name) {
 module.exports = {
   JWT_SECRET: requireEnv("JWT_SECRET"),
   DATABASE_URL: requireEnv("DATABASE_URL"),
-  OPENROUTER_API_KEY: requireEnv("OPENROUTER_API_KEY"),
+
 /*
   AWS_ACCESS_KEY_ID: requireEnv("AWS_ACCESS_KEY_ID"),
   AWS_SECRET_ACCESS_KEY: requireEnv("AWS_SECRET_ACCESS_KEY"),
