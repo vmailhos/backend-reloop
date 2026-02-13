@@ -1,16 +1,16 @@
-jest.mock("../src/email/sendOfferEmailToSeller", () => ({
+jest.mock("../../src/email/sendOfferEmailToSeller", () => ({
   sendOfferEmailToSeller: jest.fn().mockResolvedValue(undefined),
 }));
 
 const request = require("supertest");
-const app = require("../src/app");
+const app = require("../../src/app");
 const {
   prisma,
   makeAuthHeader,
   resetDatabase,
   createUser,
   createListing,
-} = require("./testUtils");
+} = require("../testUtils");
 
 describe("Offers integration", () => {
   beforeEach(async () => {
