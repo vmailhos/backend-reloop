@@ -28,20 +28,35 @@ jobs:
             --comment "Deploy backend-reloop from GitHub Actions" \
             --parameters commands='[
             "set -e",
+            "whoami",
+            "pwd",
+            "ls -la /home/ssm-user || true",
+            "ls -la /home/ssm-user/backend-reloop || true",
             "cd /home/ssm-user/backend-reloop",
+            "echo BEFORE DEPLOY: $(git rev-parse --short HEAD) || true",
+            "git remote -v",
             "git fetch origin",
+            "echo ORIGIN_MAIN=$(git rev-parse --short origin/main)",
             "git reset --hard origin/main",
             "git clean -fd",
+            "echo AFTER=$(git rev-parse --short HEAD)",
             "sudo docker compose down --remove-orphans",
             "sudo docker compose build --no-cache api",
             "sudo docker compose up -d --force-recreate",
-            "sudo docker logs --tail=30 reloop-api || true"
+            "sudo docker ps --format \"table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\"",
+            "sudo docker logs --tail=40 reloop-api || true"
             ]' \
-            --output text
+            --query "Command.CommandId" \
+            --output text)
+            echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
 
       - name: Show command result
         run: |
+          aws ssm wait command-executed \
+            --command-id "${{ steps.ssm.outputs.command_id }}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
           aws ssm list-command-invocations \
             --details \
-            --command-id "$(aws ssm list-commands --max-results 1 --query 'Commands[0].CommandId' --output text)" \
+            --command-id "${{ steps.ssm.outputs.command_id }}" \
+            --details \
             --output table
