@@ -1,3 +1,4 @@
+// src/routes/ai.js
 const express = require("express");
 const multer = require("multer");
 const OpenAI = require("openai");
@@ -5,16 +6,46 @@ const OpenAI = require("openai");
 const router = express.Router();
 const upload = multer();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+/**
+ * Crea el cliente “on-demand” para que el servidor NO crashee si falta la key.
+ * Soporta OpenRouter (por compatibilidad OpenAI-style) y también OpenAI directo.
+ */
+function getClient() {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) return null;
+
+  const baseURL =
+    process.env.OPENAI_BASE_URL ||
+    process.env.OPENROUTER_BASE_URL ||
+    "https://openrouter.ai/api/v1";
+
+  return new OpenAI({
+    apiKey,
+    baseURL,
+    // Headers recomendados por OpenRouter (son opcionales; no rompen si no están)
+    defaultHeaders: {
+      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://reloop.local",
+      "X-Title": process.env.OPENROUTER_APP_NAME || "backend-reloop",
+    },
+  });
+}
 
 router.post("/analyze-image", upload.single("image"), async (req, res) => {
-  console.log("FILE RECIBIDO:", req.file);
-
   try {
+    // 1) Validación de archivo
     if (!req.file) {
       return res.status(400).json({ error: "Image is required" });
+    }
+
+    // 2) Cliente AI (NO crashea si no hay key)
+    const openai = getClient();
+    if (!openai) {
+      return res.status(503).json({
+        error: "AI is not configured",
+        details:
+          "Missing API key. Set OPENAI_API_KEY (or OPENROUTER_API_KEY) in the environment.",
+      });
     }
 
     const base64 = req.file.buffer.toString("base64");
@@ -47,8 +78,13 @@ REGLAS:
 - SOLO JSON válido.
 `;
 
+    // OJO: si usás OpenRouter, el "model" debe ser uno soportado por OpenRouter.
+    // Ej: "openai/gpt-4.1-mini" o "gpt-4o-mini" según tu cuenta.
+    const model =
+      process.env.AI_MODEL || "openai/gpt-4.1-mini";
+
     const response = await openai.responses.create({
-      model: "gpt-4.1-mini", // modelo económico
+      model,
       input: [
         {
           role: "user",
@@ -63,67 +99,72 @@ REGLAS:
       ],
     });
 
-    const outputText = response.output_text;
+    const outputText = response.output_text || "";
 
-    console.log("AI RAW:", outputText);
-
+    // 3) Parseo robusto (quita fences)
     let parsed;
-
     try {
       let clean = outputText
-      .replace(/```[\s\S]*?```/g, (match) =>
-        match.replace(/```json|```/g, "")
-      )
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+        // elimina ```json ... ``` o ``` ... ```
+        .replace(/```json/g, "")
+        .replace(/```/g, "")
+        .trim();
 
       parsed = JSON.parse(clean);
 
-const VALID_COLORS = [
-  "Blanco","Negro","Gris","Rojo","Azul","Verde",
-  "Amarillo","Marron","Naranja","Violeta","Rosado",
-  "Celeste","Beige","Bordo","Dorado","Plateado",
-  "Jean","Estampado","Animal print","A cuadros","Otro"
-];
+      // --- Normalización color ---
+      const VALID_COLORS = [
+        "Blanco",
+        "Negro",
+        "Gris",
+        "Rojo",
+        "Azul",
+        "Verde",
+        "Amarillo",
+        "Marron",
+        "Naranja",
+        "Violeta",
+        "Rosado",
+        "Celeste",
+        "Beige",
+        "Bordo",
+        "Dorado",
+        "Plateado",
+        "Jean",
+        "Estampado",
+        "Animal print",
+        "A cuadros",
+        "Otro",
+      ];
 
-if (parsed.color) {
-  const lower = parsed.color.toLowerCase();
+      if (parsed.color) {
+        const lower = String(parsed.color).toLowerCase();
+        const normalized = VALID_COLORS.find((c) =>
+          lower.includes(c.toLowerCase())
+        );
+        parsed.color = normalized || "Otro";
+      }
 
-  const normalized = VALID_COLORS.find(c =>
-    lower.includes(c.toLowerCase())
-  );
+      // --- Normalización talles ---
+      if (parsed.sizeTop && !String(parsed.sizeTop).startsWith("TS_")) {
+        parsed.sizeTop = "TS_" + String(parsed.sizeTop).toUpperCase();
+      }
+      if (parsed.sizeBottom && !String(parsed.sizeBottom).startsWith("TB_")) {
+        parsed.sizeBottom = "TB_" + String(parsed.sizeBottom).toUpperCase();
+      }
+      if (parsed.sizeShoe && !String(parsed.sizeShoe).startsWith("SH_")) {
+        parsed.sizeShoe = "SH_" + String(parsed.sizeShoe);
+      }
 
-  parsed.color = normalized || "Otro";
-}
-  
-// -------- NORMALIZACIÓN TALLE SUPERIOR --------
-if (parsed.sizeTop && !parsed.sizeTop.startsWith("TS_")) {
-  const candidate = "TS_" + parsed.sizeTop.toUpperCase();
-  parsed.sizeTop = candidate;
-}
-
-// -------- NORMALIZACIÓN TALLE INFERIOR --------
-if (parsed.sizeBottom && !parsed.sizeBottom.startsWith("TB_")) {
-  const candidate = "TB_" + parsed.sizeBottom.toUpperCase();
-  parsed.sizeBottom = candidate;
-}
-
-// -------- NORMALIZACIÓN CALZADO --------
-if (parsed.sizeShoe && !parsed.sizeShoe.startsWith("SH_")) {
-  const candidate = "SH_" + parsed.sizeShoe;
-  parsed.sizeShoe = candidate;
-}
-// -------- NORMALIZACIÓN PRECIO --------
-if (
-  parsed.price === undefined ||
-  parsed.price === null ||
-  typeof parsed.price !== "number" ||
-  parsed.price < 300
-) {
-  parsed.price = 1500; // fallback Uruguay básico
-}
-
+      // --- Normalización precio ---
+      if (
+        parsed.price === undefined ||
+        parsed.price === null ||
+        typeof parsed.price !== "number" ||
+        parsed.price < 300
+      ) {
+        parsed.price = 1500;
+      }
     } catch (err) {
       return res.status(500).json({
         error: "AI returned invalid JSON",
@@ -132,12 +173,11 @@ if (
     }
 
     return res.json(parsed);
-
   } catch (err) {
     console.error("AI ERROR:", err);
     return res.status(500).json({
       error: "AI processing failed",
-      details: err.message,
+      details: err?.message || String(err),
     });
   }
 });
