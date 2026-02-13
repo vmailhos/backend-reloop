@@ -22,8 +22,11 @@ jobs:
 
       - name: Deploy via SSM
         id: ssm
+        shell: bash
         run: |
-          aws ssm send-command \
+          set -euo pipefail
+
+          COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy backend-reloop from GitHub Actions" \
@@ -34,7 +37,7 @@ jobs:
             "ls -la /home/ssm-user || true",
             "ls -la /home/ssm-user/backend-reloop || true",
             "cd /home/ssm-user/backend-reloop",
-            "echo BEFORE DEPLOY: $(git rev-parse --short HEAD) || true",
+            "echo BEFORE=$(git rev-parse --short HEAD) || true",
             "git remote -v",
             "git fetch origin",
             "echo ORIGIN_MAIN=$(git rev-parse --short origin/main)",
@@ -46,12 +49,15 @@ jobs:
             "sudo docker compose up -d --force-recreate",
             "sudo docker ps --format \"table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}\"",
             "sudo docker logs --tail=40 reloop-api || true"
-            ]' \
+            ]
+            }' \
             --query "Command.CommandId" \
             --output text)
-            echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
 
       - name: Show command result
+        shell: bash
         run: |
           aws ssm wait command-executed \
             --command-id "${{ steps.ssm.outputs.command_id }}" \
