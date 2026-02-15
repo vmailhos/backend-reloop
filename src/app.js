@@ -97,6 +97,12 @@ app.use((_req, res) => res.status(404).json({ error: "not_found" }));
 
 // 500 SIEMPRE último
 app.use((err, req, res, _next) => {
+  if (err?.name === "MulterError" && err?.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({
+      error: "file_too_large",
+      message: "File exceeds size limit",
+    });
+  }
   if (err?.type === "entity.parse.failed") {
     console.error("JSON parse error:", err.message);
     return res.status(400).json({ error: "invalid_json", message: err.message });

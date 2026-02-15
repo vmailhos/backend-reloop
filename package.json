@@ -10,6 +10,7 @@
     "test": "jest --testPathPatterns=tests/unit",
     "test:unit": "jest --testPathPatterns=tests/unit",
     "test:integration": "jest --testPathPatterns=tests/integration --runInBand",
+    "test:security": "jest --selectProjects security --runInBand",
     "test:all": "jest --runInBand",
     "test:watch": "jest --testPathPatterns=tests/unit --watch",
     "test:coverage": "jest --testPathPatterns=tests/unit --coverage",
