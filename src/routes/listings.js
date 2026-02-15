@@ -79,7 +79,7 @@ const createListingSchema = {
       "BUENO",
       "SATISFACTORIO",
     ]),
-    category: z.enum(["HOMBRE", "MUJER", "NINOS"]),
+    category: z.enum(["HOMBRE", "MUJER", "NINOS", "UNISEX"]),
     subCategory: z.enum(["ROPA", "ACCESORIOS", "CALZADOS"]).optional(),
     subSubCategory: z.string().optional(),
 
@@ -144,7 +144,7 @@ const updateListingSchema = {
       "BUENO",
       "SATISFACTORIO",
     ]).optional(),
-    category: z.enum(["HOMBRE", "MUJER", "NINOS"]).optional(),
+    category: z.enum(["HOMBRE", "MUJER", "NINOS", "UNISEX"]).optional(),
     subCategory: z.enum(["ROPA", "ACCESORIOS", "CALZADOS"]).optional(),
     subSubCategory: z.string().optional(),
     
