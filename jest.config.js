@@ -23,6 +23,16 @@ module.exports = {
       globalTeardown: "<rootDir>/tests/integration/teardown.js",
       maxWorkers: 1, // Run tests sequentially to avoid DB conflicts
     },
+    {
+      displayName: "security",
+      testEnvironment: "node",
+      testMatch: ["**/tests/security/**/*.test.js"],
+      setupFiles: ["<rootDir>/tests/jest.setup.js"],
+      setupFilesAfterEnv: ["<rootDir>/tests/integration/setup.js"],
+      testTimeout: 30000,
+      globalTeardown: "<rootDir>/tests/integration/teardown.js",
+      maxWorkers: 1,
+    },
   ],
   collectCoverageFrom: [
     "src/**/*.js",
