@@ -481,7 +481,7 @@ router.delete("/delete/:id", requireAuth, async (req, res, next) => {
     if (!owned) return res.status(403).json({ error: "forbidden" });
 
     // 🔥 BORRAR TODO LO RELACIONADO
-    await prisma.comment.deleteMany({ where: { listingId: id } });
+    await prisma.commentThread.deleteMany({ where: { listingId: id } });
     await prisma.favorite.deleteMany({ where: { listingId: id } });
     await prisma.offer.deleteMany({ where: { listingId: id } });
     await prisma.cartItem.deleteMany({ where: { listingId: id } });
