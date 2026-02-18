@@ -14,7 +14,7 @@ function buildEmailHtml({ headline, greetingName, bodyHtml, ctaText, ctaUrl }) {
             
             <tr>
               <td align="center" style="padding:32px;">
-                <img src="../backend-reloop/assets/logo.png" alt="Reloop" height="48" />
+                <img src="https://reloop-public-images.s3.us-east-2.amazonaws.com/logo.png" alt="Reloop" height="48" />
               </td>
             </tr>
 
