@@ -67,8 +67,8 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
     if (existingEmail)
       return res.status(409).json({ error: "email_taken" });
 
-    const existingUsername = await prisma.user.findUnique({
-      where: { username: username.trim() },
+    const existingUsername = await prisma.user.findFirst({
+      where: { username: { equals: username.trim(), mode: "insensitive" } },
     });
     if (existingUsername)
       return res.status(409).json({ error: "username_taken" });
@@ -143,13 +143,13 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
 router.post("/login", validate(loginSchema), async (req, res, next) => {
   try {
     const { identifier, password } = req.body;
-    const trimmed = identifier.trim(); // 👈 solo recorta espacios, sin cambiar el caso
+    const trimmed = identifier.trim();
 
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: trimmed.toLowerCase() }, // email sí conviene en minúsculas
-          { username: trimmed }              // 👈 busca exactamente igual como fue guardado
+          { email: trimmed.toLowerCase() },
+          { username: { equals: trimmed, mode: "insensitive" } },
         ]
       },
       select: {
