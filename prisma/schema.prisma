@@ -17,6 +17,9 @@ model User {
   email     String    @unique
   username  String    @unique
   password  String
+  emailVerifiedAt         DateTime?
+  emailVerificationToken  String?
+  emailVerificationExpiresAt DateTime?
   resetPasswordToken     String?
   resetPasswordExpiresAt DateTime?
   name      String?

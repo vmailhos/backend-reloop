@@ -131,6 +131,34 @@ components:
           type: string
         user:
           $ref: "#/components/schemas/User"
+
+    AuthSignupResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: email_verification_required
+        emailVerificationRequired:
+          type: boolean
+          example: true
+        user:
+          $ref: "#/components/schemas/User"
+
+    AuthVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          example: "c01d6d3d4b7e4e4f8b1a0b2c3d4e5f6a"
+
+    AuthResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
     ###########################
     # LISTINGS
     ###########################
@@ -472,7 +500,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthResponse"
+                $ref: "#/components/schemas/AuthSignupResponse"
         "409":
           description: Email o username ya registrados
           content:
@@ -504,6 +532,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
+        "403":
+          description: Email no verificado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Credenciales inválidas
           content:
@@ -542,6 +576,64 @@ paths:
                 $ref: "#/components/schemas/AuthResponse"
         "400":
           description: Token faltante o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verificar email
+      description: Verifica el email del usuario mediante un token temporal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequest"
+      responses:
+        "200":
+          description: Email verificado correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: email_verified
+        "400":
+          description: Token inválido o vencido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Reenviar verificación de email
+      description: Reenvia el enlace de verificación si el usuario no está verificado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthResendVerificationRequest"
+      responses:
+        "200":
+          description: Email de verificación enviado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: verification_email_sent
+        "400":
+          description: Email ya verificado o error de validación
           content:
             application/json:
               schema:

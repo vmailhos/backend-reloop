@@ -9,6 +9,11 @@ const { z } = require("zod");
 const { JWT_SECRET } = require("../config");
 const { sendWelcomeEmail } = require("../email/sendWelcomeEmail");
 const { sendPasswordResetEmail } = require("../email/sendPasswordResetEmail");
+const {
+  sendEmailVerificationEmail,
+} = require("../email/sendEmailVerificationEmail");
+
+const EMAIL_VERIFICATION_WINDOW_MS = 15 * 60 * 1000;
 
 // ---------- Schemas ----------
 const emailSchema = z.string().trim().toLowerCase().email("Email inválido");
@@ -52,6 +57,18 @@ const resetPasswordSchema = {
   }),
 };
 
+const verifyEmailSchema = {
+  body: z.object({
+    token: z.string().min(20, "Token inválido"),
+  }),
+};
+
+const resendVerificationSchema = {
+  body: z.object({
+    email: emailSchema,
+  }),
+};
+
 // ---------- Rutas ----------
 
 // ✅ POST /auth/signup
@@ -82,6 +99,11 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
       initial
     )}&background=random&color=fff&size=128`;
 
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    const verificationExpiresAt = new Date(
+      Date.now() + EMAIL_VERIFICATION_WINDOW_MS
+    );
+
     // 🔹 Crear usuario
     const user = await prisma.user.create({
       data: {
@@ -91,6 +113,8 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
         avatar,
         name,
         country,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: verificationExpiresAt,
       },
       select: {
         id: true,
@@ -102,37 +126,26 @@ router.post("/signup", validate(signupSchema), async (req, res, next) => {
       },
     });
 
-    console.log("[MAIL] Intentando enviar mail de bienvenida");
+    console.log("[MAIL] Intentando enviar mail de verificacion");
     console.log("[MAIL] Destinatario:", user.email);
-    // ✉️ ENVIAR MAIL DE BIENVENIDA (NO BLOQUEANTE)
-    sendWelcomeEmail({
+    sendEmailVerificationEmail({
       email: user.email,
-      name: user.name,
-      username: user.username,
+      name: user.name || user.username,
+      token: verificationToken,
     })
       .then(() => {
-        console.log("[MAIL] Mail de bienvenida enviado correctamente");
+        console.log("[MAIL] Mail de verificacion enviado correctamente");
       })
       .catch((err) => {
-        console.error("[MAIL] Error enviando mail de bienvenida");
+        console.error("[MAIL] Error enviando mail de verificacion");
         console.error(err);
       });
 
-    // 🔹 Crear token
-    const token = jwt.sign(
-      {
-        sub: user.id,
-        email: user.email,
-        username: user.username,
-        avatar: user.avatar,
-        name: user.name,
-        country: user.country,
-      },
-      JWT_SECRET,
-      { expiresIn: "2h" }
-    );
-
-    return res.status(201).json({ token, user });
+    return res.status(201).json({
+      message: "email_verification_required",
+      emailVerificationRequired: true,
+      user,
+    });
   } catch (e) {
     console.error("POST /auth/signup error:", e);
     next(e);
@@ -159,7 +172,8 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
         password: true,
         avatar: true,
         name: true,
-        country: true
+        country: true,
+        emailVerifiedAt: true
       },
     });
 
@@ -167,6 +181,10 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
 
     const valid = await bcrypt.compare(password, user.password || "");
     if (!valid) return res.status(401).json({ error: "invalid_credentials" });
+
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({ error: "email_not_verified" });
+    }
 
     const token = jwt.sign(
       {
@@ -181,7 +199,7 @@ router.post("/login", validate(loginSchema), async (req, res, next) => {
       { expiresIn: "2h" }
     );
 
-    const { password: _, ...safeUser } = user;
+    const { password: _, emailVerifiedAt: __, ...safeUser } = user;
     return res.json({ token, user: safeUser });
   } catch (e) {
     console.error("POST /auth/login error:", e);
@@ -210,7 +228,18 @@ router.post("/google", async (req, res, next) => {
     if (!email) return res.status(400).json({ error: "invalid_token" });
 
     // Buscar o crear usuario
-    let user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        avatar: true,
+        name: true,
+        country: true,
+        emailVerifiedAt: true,
+      },
+    });
 
     if (!user) {
       let usernameBase = (payload.name || email.split("@")[0])
@@ -233,6 +262,17 @@ router.post("/google", async (req, res, next) => {
           name: payload.name || null,
           avatar: payload.picture || null,
           password,
+          emailVerifiedAt: new Date(),
+        },
+        select: { id: true, email: true, username: true, avatar: true, name: true, country: true },
+      });
+    } else if (!user.emailVerifiedAt) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerifiedAt: new Date(),
+          emailVerificationToken: null,
+          emailVerificationExpiresAt: null,
         },
         select: { id: true, email: true, username: true, avatar: true, name: true, country: true },
       });
@@ -257,6 +297,109 @@ router.post("/google", async (req, res, next) => {
     next(e);
   }
 });
+
+// ✅ POST /auth/verify-email
+router.post("/verify-email", validate(verifyEmailSchema), async (req, res, next) => {
+  try {
+    const { token } = req.body;
+
+    const user = await prisma.user.findFirst({
+      where: {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: { gt: new Date() },
+      },
+      select: { id: true, email: true, name: true, username: true },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    sendWelcomeEmail({
+      email: user.email,
+      name: user.name,
+      username: user.username,
+    })
+      .then(() => {
+        console.log("[MAIL] Mail de bienvenida enviado correctamente");
+      })
+      .catch((err) => {
+        console.error("[MAIL] Error enviando mail de bienvenida");
+        console.error(err);
+      });
+
+    return res.json({ message: "email_verified" });
+  } catch (e) {
+    console.error("POST /auth/verify-email error:", e);
+    next(e);
+  }
+});
+
+// ✅ POST /auth/resend-verification
+router.post(
+  "/resend-verification",
+  validate(resendVerificationSchema),
+  async (req, res, next) => {
+    try {
+      const { email } = req.body;
+
+      const user = await prisma.user.findUnique({
+        where: { email: email.trim().toLowerCase() },
+        select: { id: true, email: true, name: true, username: true, emailVerifiedAt: true },
+      });
+
+      if (!user) {
+        return res.json({
+          message: "Si el email existe, te enviaremos un enlace de verificacion.",
+        });
+      }
+
+      if (user.emailVerifiedAt) {
+        return res.status(400).json({ error: "email_already_verified" });
+      }
+
+      const verificationToken = crypto.randomBytes(32).toString("hex");
+      const verificationExpiresAt = new Date(
+        Date.now() + EMAIL_VERIFICATION_WINDOW_MS
+      );
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerificationToken: verificationToken,
+          emailVerificationExpiresAt: verificationExpiresAt,
+        },
+      });
+
+      sendEmailVerificationEmail({
+        email: user.email,
+        name: user.name || user.username,
+        token: verificationToken,
+      })
+        .then(() => {
+          console.log("[MAIL] Mail de verificacion reenviado correctamente");
+        })
+        .catch((err) => {
+          console.error("[MAIL] Error reenviando mail de verificacion");
+          console.error(err);
+        });
+
+      return res.json({ message: "verification_email_sent" });
+    } catch (e) {
+      console.error("POST /auth/resend-verification error:", e);
+      next(e);
+    }
+  }
+);
 
 // ✅ POST /auth/forgot-password
 router.post("/forgot-password", validate(forgotPasswordSchema), async (req, res, next) => {
