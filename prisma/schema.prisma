@@ -19,6 +19,9 @@ model User {
   password  String
   resetPasswordToken     String?
   resetPasswordExpiresAt DateTime?
+  emailVerifiedAt         DateTime?
+  emailVerificationToken  String?
+  emailVerificationExpiresAt DateTime?
   name      String?
   lastName  String?
   phone     String?
@@ -27,9 +30,6 @@ model User {
   avatar    String?
   country   String?
   createdAt DateTime  @default(now())
-  emailVerifiedAt         DateTime?
-  emailVerificationToken  String?
-  emailVerificationExpiresAt DateTime?
   listings               Listing[]
   favorites              Favorite[]
   ratingsGiven           Rating[]                @relation("ratings_given")
