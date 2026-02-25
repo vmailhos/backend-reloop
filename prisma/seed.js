@@ -1,16 +1,32 @@
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient, Prisma } = require("@prisma/client");
 const { fakerES } = require("@faker-js/faker");
 const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
-
-const USER_COUNT = 30;
 
 const departments = [
   "Artigas","Canelones","Cerro Largo","Colonia","Durazno",
   "Flores","Florida","Lavalleja","Maldonado","Montevideo",
   "Paysandú","Río Negro","Rivera","Rocha","Salto",
   "San José","Soriano","Tacuarembó","Treinta y Tres"
+];
+
+const conditions = [
+  "NUEVO_CON_ETIQUETA",
+  "NUEVO_SIN_ETIQUETA",
+  "MUY_BUENO",
+  "BUENO",
+  "SATISFACTORIO"
+];
+
+const clothingTypes = [
+  "Remeras","Camisas","Pantalones","Camperas",
+  "Vestidos","Buzos","Faldas","Blazers","Shorts"
+];
+
+const brands = [
+  "Zara","H&M","Nike","Adidas",
+  "Levi's","Pull & Bear","Forever 21","Mango"
 ];
 
 function normalizeString(str) {
@@ -21,28 +37,49 @@ function normalizeString(str) {
     .toLowerCase();
 }
 
+function getClothingImage(type, seed) {
+  return `https://loremflickr.com/600/800/${type},fashion?lock=${seed}`;
+}
+
+function getSizeByType(type) {
+  if (["Pantalones","Shorts","Faldas"].includes(type)) {
+    return {
+      sizeBottom: fakerES.helpers.arrayElement([
+        "TB_30","TB_32","TB_34","TB_36","TB_38","TB_40"
+      ])
+    };
+  }
+
+  return {
+    sizeTop: fakerES.helpers.arrayElement([
+      "TS_S","TS_M","TS_L","TS_XL"
+    ])
+  };
+}
+
 async function main() {
 
-  console.log("🔥 RESET BASE (users + ratings)");
+  console.log("🇺🇾 Creando usuarios...");
 
   const hashedPassword = await bcrypt.hash("hola123", 10);
   const users = [];
 
-  console.log("👤 Creando usuarios...");
-
   // ==============================
   // 1️⃣ CREAR 30 USUARIOS
   // ==============================
-  for (let i = 0; i < USER_COUNT; i++) {
+  for (let i = 0; i < 30; i++) {
 
     const firstName = fakerES.person.firstName();
     const lastName = fakerES.person.lastName();
     const gender = fakerES.helpers.arrayElement(["male","female"]);
 
+    const cleanFirst = normalizeString(firstName);
+    const cleanLast = normalizeString(lastName);
+
     const user = await prisma.user.create({
       data: {
-        email: `${normalizeString(firstName)}.${normalizeString(lastName)}${i}@gmail.com`,
-        username: `${normalizeString(firstName)}${i}`,
+        email: `${cleanFirst}.${cleanLast}${i}@gmail.com`,
+        username: `${cleanFirst}${i}`,
         password: hashedPassword,
         name: firstName,
         lastName,
@@ -58,45 +95,156 @@ async function main() {
     users.push(user);
   }
 
-  console.log("⭐ Creando ratings dinámicos...");
+  const listings = [];
+
+  console.log("🛍 Creando listings...");
 
   // ==============================
-  // 2️⃣ RATINGS ENTRE 5 Y 10 POR USUARIO (RECIBIDOS)
+  // 2️⃣ 5 LISTINGS POR USUARIO
   // ==============================
   for (const user of users) {
 
-    const ratingsCount = fakerES.number.int({ min: 5, max: 10 });
+    for (let i = 0; i < 5; i++) {
 
-    const otherUsers = users.filter(u => u.id !== user.id);
+      const type = fakerES.helpers.arrayElement(clothingTypes);
 
-    for (let i = 0; i < ratingsCount; i++) {
+      const photoCount = fakerES.number.int({min:2,max:4});
+      const photosArray = Array.from({length:photoCount}).map((_,index)=>({
+        url: getClothingImage(type,fakerES.number.int({min:1,max:10000})),
+        order: index
+      }));
 
-      const author = fakerES.helpers.arrayElement(otherUsers);
+      const listing = await prisma.listing.create({
+        data: {
+          title: `${type} ${fakerES.color.human()}`,
+          description: "Prenda usada en excelente estado.",
+          price: new Prisma.Decimal(
+            fakerES.number.int({min:800,max:4500})
+          ),
+          condition: fakerES.helpers.arrayElement(conditions),
+          category: fakerES.helpers.arrayElement(["HOMBRE","MUJER","UNISEX"]),
+          subCategory: "ROPA",
+          subSubCategory: type,
+          brand: fakerES.helpers.arrayElement(brands),
+          color: fakerES.color.human(),
+          ...getSizeByType(type),
+          sellerId: user.id,
+          photos: { create: photosArray }
+        }
+      });
+
+      listings.push(listing);
+    }
+  }
+
+  console.log("⭐ Creando ratings...");
+
+  for (const user of users) {
+    const otherUsers = users.filter(u=>u.id!==user.id);
+
+    for (let i=0;i<5;i++){
+      const target = fakerES.helpers.arrayElement(otherUsers);
 
       await prisma.rating.create({
-        data: {
+        data:{
           value: fakerES.number.int({min:3,max:5}),
-          comment: fakerES.helpers.arrayElement([
-            "Excelente vendedor!",
-            "Muy recomendable.",
-            "Envío rápido y producto impecable.",
-            "Todo perfecto.",
-            "Muy buena experiencia.",
-            "Super confiable.",
-            "Volvería a comprar sin dudas."
-          ]),
-          authorId: author.id,
-          targetId: user.id
+          comment: fakerES.lorem.sentence(),
+          authorId: user.id,
+          targetId: target.id
         }
       });
     }
   }
 
-  console.log("✅ USERS + RATINGS (5–10 por usuario) creados");
+  console.log("💬 Creando threads...");
+
+  for (const listing of listings) {
+
+    const buyer = fakerES.helpers.arrayElement(users.filter(u=>u.id!==listing.sellerId));
+
+    const thread = await prisma.commentThread.create({
+      data:{
+        listingId: listing.id,
+        buyerId: buyer.id,
+        sellerId: listing.sellerId
+      }
+    });
+
+    for (let i=0;i<2;i++){
+      await prisma.comment.create({
+        data:{
+          content: fakerES.lorem.sentence(),
+          authorId: i%2===0?buyer.id:listing.sellerId,
+          threadId: thread.id
+        }
+      });
+    }
+  }
+
+  console.log("💰 Creando ofertas...");
+
+  for (const listing of listings) {
+
+    const buyer = fakerES.helpers.arrayElement(users.filter(u=>u.id!==listing.sellerId));
+
+    await prisma.offer.create({
+      data:{
+        listingId: listing.id,
+        buyerId: buyer.id,
+        sellerId: listing.sellerId,
+        amount: new Prisma.Decimal(
+          fakerES.number.int({min:500,max:3000})
+        ),
+        status: fakerES.helpers.arrayElement(["PENDING","ACCEPTED","REJECTED"])
+      }
+    });
+  }
+
+  console.log("📦 Creando ventas...");
+
+  for (const user of users) {
+
+    const userListings = listings.filter(l=>l.sellerId===user.id);
+    const listingToSell = userListings[0];
+
+    const buyer = fakerES.helpers.arrayElement(users.filter(u=>u.id!==user.id));
+
+    const price = Number(listingToSell.price);
+    const commission = price * 0.03;
+    const total = price + commission;
+
+    await prisma.order.create({
+      data:{
+        subtotal: new Prisma.Decimal(price),
+        commission: new Prisma.Decimal(commission),
+        totalAmount: new Prisma.Decimal(total),
+        commissionPct: new Prisma.Decimal(3),
+        status:"COMPLETED",
+        buyerId: buyer.id,
+        shippingProvider:"DAC",
+        shippingType:"HOME",
+        items:{
+          create:{
+            listingId: listingToSell.id,
+            price: new Prisma.Decimal(price)
+          }
+        }
+      }
+    });
+
+    await prisma.listing.update({
+      where:{id:listingToSell.id},
+      data:{status:"sold"}
+    });
+  }
+
+  console.log("✅ DATASET COMPLETO CREADO");
 }
 
 main()
-  .catch(e => console.error(e))
-  .finally(async () => {
+  .catch(e=>{
+    console.error(e);
+  })
+  .finally(async()=>{
     await prisma.$disconnect();
   });
