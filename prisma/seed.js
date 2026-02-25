@@ -25,9 +25,6 @@ async function main() {
 
   console.log("🔥 RESET BASE (users + ratings)");
 
-  await prisma.rating.deleteMany();
-  await prisma.user.deleteMany();
-
   const hashedPassword = await bcrypt.hash("hola123", 10);
   const users = [];
 
