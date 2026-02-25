@@ -1,59 +1,105 @@
-// prisma/seed.js
 const { PrismaClient } = require("@prisma/client");
+const { fakerES } = require("@faker-js/faker");
 const bcrypt = require("bcryptjs");
+
 const prisma = new PrismaClient();
 
-async function main() {
-  // usuarios
-  const pass = await bcrypt.hash("123456", 10);
-  const sofi = await prisma.user.upsert({
-    where: { email: "sofi@example.com" },
-    create: { email: "sofi@example.com", password: pass },
-    update: {}
-  });
-  const leo = await prisma.user.upsert({
-    where: { email: "leo@example.com" },
-    create: { email: "leo@example.com", password: pass },
-    update: {}
-  });
+const USER_COUNT = 30;
 
-  // listings + fotos
-  const l1 = await prisma.listing.upsert({
-    where: { id: "seed-1" },
-    create: {
-      id: "seed-1",
-      title: "Vestido lila",
-      price: 1200,
-      category: "vestidos",
-      condition: "como_nuevo",
-      sellerId: sofi.id,
-      photos: { create: [{ url: "uploads/foto1.png" }] }
-    },
-    update: {}
-  });
+const departments = [
+  "Artigas","Canelones","Cerro Largo","Colonia","Durazno",
+  "Flores","Florida","Lavalleja","Maldonado","Montevideo",
+  "Paysandú","Río Negro","Rivera","Rocha","Salto",
+  "San José","Soriano","Tacuarembó","Treinta y Tres"
+];
 
-  const l2 = await prisma.listing.upsert({
-    where: { id: "seed-2" },
-    create: {
-      id: "seed-2",
-      title: "Campera denim",
-      price: 2500,
-      category: "camperas",
-      condition: "usado",
-      sellerId: leo.id,
-      photos: { create: [{ url: "uploads/foto2.png" }] }
-    },
-    update: {}
-  });
-
-  // favorito demo (sofi → campera de leo)
-  await prisma.favorite.upsert({
-    where: { userId_listingId: { userId: sofi.id, listingId: l2.id } },
-    create: { userId: sofi.id, listingId: l2.id },
-    update: {}
-  });
-
-  console.log("Seed OK");
+function normalizeString(str) {
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
 }
 
-main().finally(async () => prisma.$disconnect());
+async function main() {
+
+  console.log("🔥 RESET BASE (users + ratings)");
+
+  await prisma.rating.deleteMany();
+  await prisma.user.deleteMany();
+
+  const hashedPassword = await bcrypt.hash("hola123", 10);
+  const users = [];
+
+  console.log("👤 Creando usuarios...");
+
+  // ==============================
+  // 1️⃣ CREAR 30 USUARIOS
+  // ==============================
+  for (let i = 0; i < USER_COUNT; i++) {
+
+    const firstName = fakerES.person.firstName();
+    const lastName = fakerES.person.lastName();
+    const gender = fakerES.helpers.arrayElement(["male","female"]);
+
+    const user = await prisma.user.create({
+      data: {
+        email: `${normalizeString(firstName)}.${normalizeString(lastName)}${i}@gmail.com`,
+        username: `${normalizeString(firstName)}${i}`,
+        password: hashedPassword,
+        name: firstName,
+        lastName,
+        phone: `09${fakerES.number.int({min:1000000,max:9999999})}`,
+        country: fakerES.helpers.arrayElement(departments),
+        gender,
+        birthDate: fakerES.date.birthdate({min:18,max:50,mode:"age"}),
+        avatar: `https://randomuser.me/api/portraits/${gender==="male"?"men":"women"}/${fakerES.number.int({min:1,max:99})}.jpg`,
+        emailVerifiedAt: new Date()
+      }
+    });
+
+    users.push(user);
+  }
+
+  console.log("⭐ Creando ratings dinámicos...");
+
+  // ==============================
+  // 2️⃣ RATINGS ENTRE 5 Y 10 POR USUARIO (RECIBIDOS)
+  // ==============================
+  for (const user of users) {
+
+    const ratingsCount = fakerES.number.int({ min: 5, max: 10 });
+
+    const otherUsers = users.filter(u => u.id !== user.id);
+
+    for (let i = 0; i < ratingsCount; i++) {
+
+      const author = fakerES.helpers.arrayElement(otherUsers);
+
+      await prisma.rating.create({
+        data: {
+          value: fakerES.number.int({min:3,max:5}),
+          comment: fakerES.helpers.arrayElement([
+            "Excelente vendedor!",
+            "Muy recomendable.",
+            "Envío rápido y producto impecable.",
+            "Todo perfecto.",
+            "Muy buena experiencia.",
+            "Super confiable.",
+            "Volvería a comprar sin dudas."
+          ]),
+          authorId: author.id,
+          targetId: user.id
+        }
+      });
+    }
+  }
+
+  console.log("✅ USERS + RATINGS (5–10 por usuario) creados");
+}
+
+main()
+  .catch(e => console.error(e))
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
