@@ -428,12 +428,16 @@ router.patch("/update/:id", requireAuth, validate(updateListingSchema), async (r
     const photosList = photos || [];
     const validPhotos = Array.isArray(photosList)
       ? photosList
-          .map((p) => {
-            if (typeof p === "string") return { url: p };
-            if (p && typeof p === "object" && p.url) return { url: p.url };
+          .map((p, index) => {
+            if (typeof p === "string") {
+              return { url: p, order: index };
+            }
+            if (p && typeof p === "object" && p.url) {
+              return { url: p.url, order: index };
+            }
             return null;
           })
-          .filter((p) => p !== null && p.url && p.url.length > 0)
+          .filter(Boolean)
       : [];
 
     const updated = await prisma.listing.update({
