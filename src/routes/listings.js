@@ -160,6 +160,8 @@ const updateListingSchema = {
     sizeAccessory: AccessorySizeEnum.optional(),
     sizeKids: KidsSizeEnum.optional(),
     sizeKidsShoe: KidsShoeSizeEnum.optional(),
+
+    photos: z.array(z.string().url()).optional(),
   }),
 };
 
